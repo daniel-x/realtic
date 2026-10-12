@@ -1,15 +1,16 @@
 // Time scale of the integration tests. The peers run on one machine, where delivery takes about a
 // millisecond, so the library's silence and backoff timings can be much shorter than in the field
-// and stay far apart from the working state. REALTIC_TIME_SCALE sets the factor (default 0.25;
+// and stay far apart from the working state. TEST_TIME_SCALE_FACTOR sets the factor (default 0.25;
 // the fast suite and the soak run use 1, the real defaults).
 //
 // Not scaled: timings that cover negotiation round trips through the signaling server
 // (connectTimeoutMs, recoveryStepTimeoutMs, and CHANNEL_OPEN_TIMEOUT_MS, because DTLS on the
-// answering side waits until the offerer has the answer), the background thresholds, which are judged by ICE
-// consent checks the browser sends about every 5 s, and the bandwidth estimation periods.
+// answering side waits until the offerer has the answer), the background thresholds, which are
+// judged by ICE consent checks the browser sends about every 5 s, and the bandwidth estimation
+// periods.
 import { DEFAULTS } from "../../../src/config.js";
 
-export const TIME_SCALE = Number(process.env.REALTIC_TIME_SCALE ?? 0.25);
+export const TIME_SCALE_FACTOR = Number(process.env.TEST_TIME_SCALE_FACTOR ?? 0.25);
 
 const SCALED_KEYS = [
   "HEARTBEAT_IDLE_MS",
@@ -25,7 +26,7 @@ const SCALED_KEYS = [
 ];
 
 /** A library duration in the test's time scale. */
-export const ms = (n) => Math.round(n * TIME_SCALE);
+export const ms = (n) => Math.round(n * TIME_SCALE_FACTOR);
 
 /** A tolerance in the test's time scale, never below `floor` (timer jitter does not scale). */
 export const tolerance = (n, floor = 250) => Math.max(ms(n), floor);
