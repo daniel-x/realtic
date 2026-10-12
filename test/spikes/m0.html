@@ -1,0 +1,133 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>M0 spikes</title>
+<script type="module">
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function canvasTrack() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 320; canvas.height = 240;
+  const ctx = canvas.getContext("2d");
+  let n = 0;
+  setInterval(() => { ctx.fillStyle = `hsl(${n++ % 360},80%,50%)`; ctx.fillRect(0, 0, 320, 240); ctx.fillStyle = "#000"; ctx.fillText(String(n), 10, 20); }, 33);
+  return canvas.captureStream(30).getVideoTracks()[0];
+}
+
+async function connect(a, b) {
+  a.onicecandidate = (e) => e.candidate && b.addIceCandidate(e.candidate).catch(() => {});
+  b.onicecandidate = (e) => e.candidate && a.addIceCandidate(e.candidate).catch(() => {});
+  await a.setLocalDescription();
+  await b.setRemoteDescription(a.localDescription);
+  await b.setLocalDescription();
+  await a.setRemoteDescription(b.localDescription);
+}
+
+async function waitConnected(pc) {
+  for (let i = 0; i < 100 && pc.connectionState !== "connected"; i++) await sleep(100);
+  return pc.connectionState;
+}
+
+async function stat(pc, type, pick) {
+  const out = [];
+  (await pc.getStats()).forEach((s) => { if (s.type === type) out.push(pick ? pick(s) : s); });
+  return out;
+}
+
+async function selectedPair(pc) {
+  const r = await pc.getStats();
+  let pair;
+  r.forEach((s) => { if (s.type === "transport" && s.selectedCandidatePairId) pair = r.get(s.selectedCandidatePairId); });
+  if (!pair) r.forEach((s) => { if (s.type === "candidate-pair" && (s.selected || s.nominated) && s.state === "succeeded") pair = s; });
+  return pair;
+}
+
+window.spike = async () => {
+  const res = {};
+  res.features = {
+    RTCRtpScriptTransform: typeof RTCRtpScriptTransform !== "undefined",
+    createEncodedStreams: typeof RTCRtpSender !== "undefined" && "createEncodedStreams" in RTCRtpSender.prototype,
+    MediaStreamTrackGenerator: typeof MediaStreamTrackGenerator !== "undefined",
+    VideoTrackGenerator: typeof VideoTrackGenerator !== "undefined",
+    setSinkId: "setSinkId" in HTMLMediaElement.prototype,
+    getDisplayMedia: !!navigator.mediaDevices?.getDisplayMedia,
+    connection: !!navigator.connection,
+  };
+  const ac = new RTCPeerConnection({ bundlePolicy: "max-bundle" });
+  const ca = new RTCPeerConnection({ bundlePolicy: "max-bundle" });
+  const cb = new RTCPeerConnection({ bundlePolicy: "max-bundle" });
+  const bc = new RTCPeerConnection({ bundlePolicy: "max-bundle" });
+  const dc1 = ac.createDataChannel("ctl", { negotiated: true, id: 0 });
+  ca.createDataChannel("ctl", { negotiated: true, id: 0 });
+  const track = canvasTrack();
+  ac.addTransceiver(track, { direction: "sendonly" });
+  const relayed = new Promise((r) => (ca.ontrack = (e) => r(e.track)));
+  await connect(ac, ca);
+  res.connAC = await waitConnected(ac);
+  const remote = await relayed;
+  const tx = cb.addTransceiver(remote, { direction: "sendonly" });
+  const dcb = cb.createDataChannel("ctl", { negotiated: true, id: 0 });
+  bc.createDataChannel("ctl", { negotiated: true, id: 0 });
+  const got = new Promise((r) => (bc.ontrack = (e) => r(e.track)));
+  await connect(cb, bc);
+  res.connCB = await waitConnected(cb);
+  const bTrack = await got;
+  const video = document.createElement("video");
+  video.muted = true; video.srcObject = new MediaStream([bTrack]); document.body.append(video); video.play().catch(() => {});
+  await sleep(3000);
+  res.sctpMax = ac.sctp?.maxMessageSize;
+  res.dcState = dc1.readyState;
+  res.inboundB = await stat(bc, "inbound-rtp", (s) => ({ kind: s.kind, framesDecoded: s.framesDecoded, bytes: s.bytesReceived, lastPacketReceivedTimestamp: s.lastPacketReceivedTimestamp }));
+  const pair = await selectedPair(ac);
+  res.pairAC = pair && { availableOutgoingBitrate: pair.availableOutgoingBitrate, currentRoundTripTime: pair.currentRoundTripTime, responsesReceived: pair.responsesReceived, lastPacketReceivedTimestamp: pair.lastPacketReceivedTimestamp, requestsSent: pair.requestsSent };
+  res.videoSize = [video.videoWidth, video.videoHeight];
+  const p = tx.sender.getParameters();
+  res.encodings = p.encodings?.length;
+  p.encodings[0].active = false;
+  await tx.sender.setParameters(p);
+  await sleep(500);
+  const b0 = (await stat(cb, "outbound-rtp", (s) => s.bytesSent))[0];
+  await sleep(1500);
+  const b1 = (await stat(cb, "outbound-rtp", (s) => s.bytesSent))[0];
+  res.inactiveBytesDelta = b1 - b0;
+  const f0 = (await stat(bc, "inbound-rtp", (s) => s.framesDecoded))[0];
+  const p2 = tx.sender.getParameters();
+  p2.encodings[0].active = true;
+  const t0 = performance.now();
+  await tx.sender.setParameters(p2);
+  let f1 = f0;
+  while (f1 === f0 && performance.now() - t0 < 5000) { await sleep(20); f1 = (await stat(bc, "inbound-rtp", (s) => s.framesDecoded))[0]; }
+  res.resumeMs = Math.round(performance.now() - t0);
+  const r = remote;
+  r.addEventListener("mute", () => {});
+  // stable stream: swap tracks of srcObject while playing
+  const stream = video.srcObject;
+  const t2 = canvasTrack();
+  stream.addTrack(t2); stream.removeTrack(bTrack);
+  await sleep(1000);
+  res.afterSwapPaused = video.paused;
+  res.afterSwapSize = [video.videoWidth, video.videoHeight];
+  // max message size send test
+  const big = new Uint8Array(Math.min(res.sctpMax || 65536, 262144));
+  try { dcb.send(new Uint8Array(1000)); res.smallSend = "ok"; } catch (e) { res.smallSend = e.name; }
+  try { dc1.send(big); res.bigSend = "ok:" + big.length; } catch (e) { res.bigSend = e.name; }
+  for (const pc of [ac, ca, cb, bc]) pc.close();
+  return res;
+};
+
+window.consentSpike = async (ms) => {
+  const a = new RTCPeerConnection();
+  const b = new RTCPeerConnection();
+  a.createDataChannel("x", { negotiated: true, id: 0 });
+  b.createDataChannel("x", { negotiated: true, id: 0 });
+  await connect(a, b);
+  await waitConnected(a);
+  const samples = [];
+  const t0 = performance.now();
+  while (performance.now() - t0 < ms) {
+    const p = await selectedPair(a);
+    samples.push({ t: Math.round(performance.now() - t0), resp: p?.responsesReceived, last: p?.lastPacketReceivedTimestamp });
+    await sleep(1000);
+  }
+  return samples;
+};
+</script>
