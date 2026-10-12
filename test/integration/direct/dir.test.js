@@ -385,6 +385,25 @@ for (const pairing of pairings()) {
       });
     });
 
+    for (const stableTracks of pairing === "chromium" ? [false, true] : [false]) {
+      test(`DIR-17 stable ${stableTracks ? "track" : "stream"} survives a link rebuild`, async () => {
+        await withScenario(`DIR-17-${pairing}-${stableTracks}`, { browsers: two(pairing), peerConfig: { 1: { stableTracks } } }, async (s) => {
+          await s.eval(0, () => window.t.publishCounter("camera"));
+          await connectAll(s);
+          const key = `${s.id(0)}:camera`;
+          await waitFor(async () => (await s.eval(1, (k) => window.t.frames(k).length, key)) > 10, 15000, "frames");
+          const id1 = await s.eval(1, () => window.t.tracks[0].track.id);
+          await s.eval(0, (id) => window.t.hook.rebuild(id), s.id(1));
+          await sleep(4000);
+          const t0 = Date.now();
+          await sleep(1500);
+          assert.equal(await s.eval(1, () => window.t.tracks.length), 1, "no second track event");
+          if (stableTracks) assert.equal(await s.eval(1, () => window.t.tracks[0].track.id), id1);
+          await waitFor(async () => (await s.eval(1, ([k, f]) => window.t.frames(k, f).length, [key, t0])) > 5, 10000, "frames after the rebuild");
+        });
+      });
+    }
+
     test("DIR-16 logging: state changes, ring buffer, report, remote log, redaction", async () => {
       await withScenario(`DIR-16-${pairing}`, { browsers: two(pairing), peerConfig: { 1: { shareLogWithPeers: true, logRedact: true } } }, async (s) => {
         await connectAll(s);

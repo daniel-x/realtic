@@ -23,6 +23,12 @@ export async function withScenario(name, options, fn) {
   try {
     await s.start();
     await fn(s);
+    for (const [id, page] of s.pages) {
+      const bad = await page
+        .evaluate(() => window.t.log({ level: "error" }).filter((e) => e.area === "app" || / error$/.test(e.msg)))
+        .catch(() => []);
+      if (bad.length) throw new Error(`internal errors at ${id}: ${JSON.stringify(bad.slice(0, 3))}`);
+    }
   } catch (error) {
     const dir = await s.saveArtifacts(name).catch(() => "?");
     error.message += `\n  artifacts: ${dir}`;

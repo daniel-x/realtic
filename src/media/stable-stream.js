@@ -1,4 +1,5 @@
 import { TRACK_SWAPPED } from "./attach.js";
+import { StableTrack } from "./stable-track.js";
 
 /**
  * Stable streams (plan section 10.3): one MediaStream per origin and publication that lives as
@@ -14,11 +15,15 @@ export class StableStreams {
    * @param {(origin: string) => string | null} options.preferredSource link id the origin's route uses
    * @param {(origin: string, event: string, detail: object) => void} options.emit
    * @param {() => MediaStream} [options.createStream]
+   * @param {boolean} [options.stableTracks] give one generated track per publication (Chromium)
    */
-  constructor({ preferredSource, emit, createStream = () => new MediaStream() }) {
+  constructor({ preferredSource, emit, createStream = () => new MediaStream(), stableTracks = false, graceMs = 15000, clock = globalThis }) {
+    this.graceMs = graceMs;
+    this.clock = clock;
     this.preferredSource = preferredSource;
     this.emit = emit;
     this.createStream = createStream;
+    this.stableTracks = stableTracks && StableTrack.supported();
   }
 
   /**
@@ -36,28 +41,47 @@ export class StableStreams {
     }
     e.tag = info.tag;
     e.sources.set(source, track);
+    if (e.graceTimer) {
+      this.clock.clearTimeout(e.graceTimer);
+      e.graceTimer = null;
+    }
     this.#select(e);
   }
 
   /**
-   * Removes a source of a publication; ends the publication when no source is left.
+   * Removes a source of a publication; ends the publication when no source is left. With
+   * `grace`, the stream waits `graceMs` for a new source first (link rebuild or route repair).
    * @param {string} origin
    * @param {string} pub
    * @param {string} source
+   * @param {boolean} [grace]
    */
-  detach(origin, pub, source) {
+  detach(origin, pub, source, grace = false) {
     const key = `${origin}:${pub}`;
     const e = this.#entries.get(key);
     if (!e || !e.sources.delete(source)) return;
     if (e.sources.size) return this.#select(e);
-    if (e.current) e.stream.removeTrack(e.current);
-    this.#entries.delete(key);
-    if (e.announced) this.emit(origin, "trackended", { track: e.current, stream: e.stream, tag: e.tag, kind: e.kind, origin, pub });
+    if (grace) {
+      if (!e.graceTimer) e.graceTimer = this.clock.setTimeout(() => this.#end(key, e), this.graceMs);
+      return;
+    }
+    this.#end(key, e);
   }
 
-  /** Removes every source that came over `source`. */
+  #end(key, e) {
+    if (this.#entries.get(key) !== e || e.sources.size) return;
+    if (e.graceTimer) this.clock.clearTimeout(e.graceTimer);
+    const { origin, pub } = e;
+    const visible = e.pipe ? e.pipe.track : e.current;
+    if (visible) e.stream.removeTrack(visible);
+    e.pipe?.stop();
+    this.#entries.delete(key);
+    if (e.announced) this.emit(origin, "trackended", { track: visible, stream: e.stream, tag: e.tag, kind: e.kind, origin, pub });
+  }
+
+  /** Removes every source that came over `source`, keeping the streams for `graceMs`. */
   detachSource(source) {
-    for (const e of [...this.#entries.values()]) this.detach(e.origin, e.pub, source);
+    for (const e of [...this.#entries.values()]) this.detach(e.origin, e.pub, source, true);
   }
 
   /** Removes every publication of `origin`. */
@@ -65,6 +89,7 @@ export class StableStreams {
     for (const e of [...this.#entries.values()]) {
       if (e.origin !== origin) continue;
       for (const s of [...e.sources.keys()]) this.detach(origin, e.pub, s);
+      if (!e.sources.size) this.#end(`${origin}:${e.pub}`, e);
     }
   }
 
@@ -74,6 +99,7 @@ export class StableStreams {
   }
 
   #select(e) {
+    if (!e.sources.size) return;
     const preferred = this.preferredSource(e.origin);
     const source = e.sources.has(preferred) ? preferred : e.sources.has(e.currentSource) ? e.currentSource : e.sources.keys().next().value;
     const track = e.sources.get(source);
@@ -81,6 +107,20 @@ export class StableStreams {
     if (track === e.current) return;
     const old = e.current;
     e.current = track;
+    if (this.stableTracks) {
+      if (!e.pipe) {
+        e.pipe = new StableTrack(e.kind);
+        e.stream.addTrack(e.pipe.track);
+      }
+      e.pipe.setSource(track);
+      if (!e.announced) {
+        e.announced = true;
+        this.emit(e.origin, "track", { track: e.pipe.track, stream: e.stream, tag: e.tag, kind: e.kind, origin: e.origin, pub: e.pub });
+      } else {
+        this.emit(e.origin, "trackreplaced", { track: e.pipe.track, sourceTrack: track, oldTrack: e.pipe.track, stream: e.stream, tag: e.tag, kind: e.kind, origin: e.origin, pub: e.pub });
+      }
+      return;
+    }
     e.stream.addTrack(track);
     if (old) e.stream.removeTrack(old);
     if (old && typeof e.stream.dispatchEvent === "function") e.stream.dispatchEvent(new Event(TRACK_SWAPPED));
