@@ -84,7 +84,7 @@ export class DataRelay {
     };
     if (msg.origin !== origin) return reject("origin mismatch");
     if (!g.config.relay) return reject("relaying disabled");
-    if (!g.peers.has(msg.target) || !g.peers.has(origin)) return reject("not a member");
+    if (!g.connections.has(msg.target) || !g.connections.has(origin)) return reject("not a member");
     if (!g.helloDone(msg.target) || !g.helloDone(origin)) return reject("no hello");
     if (g.config.allowRelay && !g.config.allowRelay(origin, msg.target)) return reject("not allowed");
     const next = g.links.get(msg.target);

@@ -1,5 +1,5 @@
-export { Group } from "./group.js";
-export { Peer } from "./peer.js";
+export { RealticGroup } from "./group.js";
+export { RealticConnection } from "./connection.js";
 export { RealticChannel } from "./channel/channel.js";
 export { Publication } from "./media/media.js";
 export { attachMedia, TRACK_SWAPPED } from "./media/attach.js";

@@ -275,7 +275,7 @@ export class Routing {
   #onRelayOpen(link, msg) {
     const g = this.#group;
     const origin = msg.origin;
-    if (!g.peers.has(origin) || !g.helloDone(origin)) {
+    if (!g.connections.has(origin) || !g.helloDone(origin)) {
       link.sendCtl({ t: "relay-close", flow: msg.flow, origin });
       return;
     }
@@ -333,7 +333,7 @@ export class Routing {
 
   #onRouteSlow(link, msg) {
     const peerId = msg.origin;
-    const peer = this.#group.peers.get(peerId);
+    const peer = this.#group.connections.get(peerId);
     const r = peer?.routeInfo;
     if (r?.kind !== "relay" || r.via !== link.remoteId) return;
     this.l.info("route-slow", { peer: peerId, via: link.remoteId });
@@ -380,7 +380,7 @@ export class Routing {
 
   #standbyBeats() {
     for (const [peerId, p] of this.pairs) {
-      const peer = this.#group.peers.get(peerId);
+      const peer = this.#group.connections.get(peerId);
       if (!peer) continue;
       const active = peer.routeInfo;
       for (const f of p.flows.values()) {
@@ -397,7 +397,7 @@ export class Routing {
 
   #standbyOf(peerId) {
     const p = this.pairs.get(peerId);
-    const active = this.#group.peers.get(peerId)?.routeInfo;
+    const active = this.#group.connections.get(peerId)?.routeInfo;
     if (!p) return null;
     for (const f of p.flows.values()) {
       if (f.state !== "open" || f.down || (active?.kind === "relay" && active.flow === f.flow)) continue;
@@ -430,7 +430,7 @@ export class Routing {
       this.#activate(peerId, standby, `failover: ${reason}`);
       return;
     }
-    const peer = this.#group.peers.get(peerId);
+    const peer = this.#group.connections.get(peerId);
     const r = peer?.routeInfo;
     if (r?.kind === "relay" && r.via === deadVia) {
       peer.setRoute(null, reason);
@@ -481,11 +481,11 @@ export class Routing {
         load: t.load,
         relay: t.relay,
         mediaRelay: t.mediaRelay,
-        major: g.peers.get(via)?.remote?.proto?.major ?? this.#group.protocol.major,
-        caps: g.peers.get(via)?.remote?.caps,
+        major: g.connections.get(via)?.remote?.proto?.major ?? this.#group.protocol.major,
+        caps: g.connections.get(via)?.remote?.caps,
       });
     }
-    const caps = { [g.selfId]: g.localCaps, [peerId]: g.peers.get(peerId)?.remote?.caps };
+    const caps = { [g.selfId]: g.localCaps, [peerId]: g.connections.get(peerId)?.remote?.caps };
     return candidates({
       target: peerId,
       direct,
@@ -495,13 +495,13 @@ export class Routing {
       major: this.#group.protocol.major,
       caps,
       self: g.selfId,
-      mediaPolicy: (id) => (id === g.selfId ? g.config.mediaRelay : g.peers.get(id)?.remote?.mediaRelay ?? "allow"),
+      mediaPolicy: (id) => (id === g.selfId ? g.config.mediaRelay : g.connections.get(id)?.remote?.mediaRelay ?? "allow"),
     });
   }
 
   #update(peerId, reason) {
     const g = this.#group;
-    const peer = g.peers.get(peerId);
+    const peer = g.connections.get(peerId);
     const p = this.pairs.get(peerId);
     if (!peer || !p || peer.state === "closed" || !g.helloDone(peerId)) return;
     if (peer.hint === "protocol-mismatch") return;
@@ -524,7 +524,7 @@ export class Routing {
 
   #ownerDecide(peerId, p, reason) {
     const g = this.#group;
-    const peer = g.peers.get(peerId);
+    const peer = g.connections.get(peerId);
     const list = this.#candidates(peerId);
     const current = peer.routeInfo;
     if (current?.kind === "relay") {
@@ -571,7 +571,7 @@ export class Routing {
   }
 
   #tidyFlows(peerId, p, best, list) {
-    const peer = this.#group.peers.get(peerId);
+    const peer = this.#group.connections.get(peerId);
     const active = peer.routeInfo;
     const overlapFlow = p.overlap?.route?.flow;
     if (!best || best.kind === "direct") {
@@ -597,7 +597,7 @@ export class Routing {
 
   #followerDecide(peerId, p) {
     const g = this.#group;
-    const peer = g.peers.get(peerId);
+    const peer = g.connections.get(peerId);
     const current = peer.routeInfo;
     const link = g.links.get(peerId);
     if (current?.kind === "relay") {
@@ -626,7 +626,7 @@ export class Routing {
 
   #use(peerId, route, reason, overlap = true) {
     const g = this.#group;
-    const peer = g.peers.get(peerId);
+    const peer = g.connections.get(peerId);
     const p = this.pairs.get(peerId);
     const prev = peer.routeInfo;
     if (prev && routeKey(prev) === routeKey(route) && prev.flow === route.flow) return;
@@ -717,7 +717,7 @@ export class Routing {
     const links = {};
     for (const [id, link] of g.links) links[id] = { state: link.state, liveness: link.liveness, session: link.session, metrics: link.metrics, bufferedAmount: link.bufferedAmount };
     const peers = {};
-    for (const [id, peer] of g.peers) {
+    for (const [id, peer] of g.connections) {
       const p = this.pairs.get(id);
       peers[id] = {
         state: peer.state,

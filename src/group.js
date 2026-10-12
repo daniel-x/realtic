@@ -8,7 +8,7 @@ import { Dedupe } from "./signaling/queue.js";
 import { SignalingRouter, RELAYABLE } from "./signaling/router.js";
 import { DirectLink } from "./link/direct-link.js";
 import { NetworkWatcher } from "./link/network.js";
-import { Peer } from "./peer.js";
+import { RealticConnection } from "./connection.js";
 import { decode } from "./transport/framing.js";
 import { generateKeyPair, exportPublic, derivePairKey } from "./crypto/e2e.js";
 import { MediaManager } from "./media/media.js";
@@ -26,12 +26,12 @@ const MESH_ONLY_REJECT = new Set(["hello", "offer", "answer"]);
  * A group of peers in a mesh (plan section 3). The app owns membership: it calls `addPeer` and
  * `removePeer`, or enables `autoPeers` to follow the adapter's presence events.
  *
- * Events: `peer` (Peer) when a peer object is created, `peerleft` (Peer, reason),
- * `presence` ({type, peer}).
+ * Events: `connection` (RealticConnection) when a connection is created, `peerleft`
+ * (RealticConnection, reason), `presence` ({type, peer}).
  */
-export class Group extends Emitter {
-  /** @type {Map<string, Peer>} */
-  peers = new Map();
+export class RealticGroup extends Emitter {
+  /** @type {Map<string, RealticConnection>} */
+  connections = new Map();
   /** @type {Map<string, DirectLink>} */
   links = new Map();
   #pendingHellos = new Map();
@@ -139,21 +139,21 @@ export class Group extends Emitter {
   // Membership ----------------------------------------------------------------------------------
 
   /**
-   * Adds a peer to the group and starts connecting to it. Returns the stable Peer object.
+   * Adds a peer to the group and starts connecting to it. Returns the stable RealticConnection.
    * @param {string} peerId
    */
   addPeer(peerId) {
     if (this.#closed) throw new Error("group is closed");
     if (peerId === this.selfId) throw new Error("cannot add self");
-    let peer = this.peers.get(peerId);
+    let peer = this.connections.get(peerId);
     if (peer) return peer;
-    peer = new Peer(this, peerId);
+    peer = new RealticConnection(this, peerId);
     peer.onListenerError = this.onListenerError;
-    this.peers.set(peerId, peer);
+    this.connections.set(peerId, peer);
     this.log.write("info", "group", "peer added", undefined, { peer: peerId });
-    this.emit("peer", peer);
+    this.emit("connection", peer);
     this.#ready.then(() => {
-      if (this.peers.get(peerId) !== peer) return;
+      if (this.connections.get(peerId) !== peer) return;
       this.#sendHello(peerId, false);
       const pending = this.#pendingHellos.get(peerId);
       this.#pendingHellos.delete(peerId);
@@ -167,15 +167,15 @@ export class Group extends Emitter {
    * @param {string} peerId
    */
   removePeer(peerId, reason = "removed") {
-    const peer = this.peers.get(peerId);
+    const peer = this.connections.get(peerId);
     if (!peer) return;
     this.router.send(peerId, { t: "bye", reason });
     this.#dropPeer(peerId, reason);
   }
 
   #dropPeer(peerId, reason) {
-    const peer = this.peers.get(peerId);
-    this.peers.delete(peerId);
+    const peer = this.connections.get(peerId);
+    this.connections.delete(peerId);
     this.#helloDone.delete(peerId);
     this.#pendingHellos.delete(peerId);
     this.#heldSignals.delete(peerId);
@@ -201,7 +201,7 @@ export class Group extends Emitter {
     this.emit("presence", event);
     if (!this.autoPeers || this.#closed) return;
     if (event.type === "join" && event.peer !== this.selfId) this.addPeer(event.peer);
-    if (event.type === "leave" && this.peers.has(event.peer) && !this.peers.get(event.peer).everConnected) this.#dropPeer(event.peer, "left");
+    if (event.type === "leave" && this.connections.has(event.peer) && !this.connections.get(event.peer).everConnected) this.#dropPeer(event.peer, "left");
   }
 
   // Hello ---------------------------------------------------------------------------------------
@@ -223,7 +223,7 @@ export class Group extends Emitter {
     this.router.send(peerId, this.#helloMessage(ack, peerId), { serverOnly: true });
     if (ack || this.#helloTimers.has(peerId)) return;
     const timer = this.clock.setInterval(() => {
-      if (this.#helloDone.has(peerId) || !this.peers.has(peerId)) return this.#stopHelloRetry(peerId);
+      if (this.#helloDone.has(peerId) || !this.connections.has(peerId)) return this.#stopHelloRetry(peerId);
       this.router.send(peerId, this.#helloMessage(false, peerId), { serverOnly: true });
     }, HELLO_RETRY_MS);
     this.#helloTimers.set(peerId, timer);
@@ -235,7 +235,7 @@ export class Group extends Emitter {
   }
 
   async #onHello(from, msg) {
-    const peer = this.peers.get(from);
+    const peer = this.connections.get(from);
     if (!peer) {
       this.#pendingHellos.set(from, msg);
       this.emit("presence", { type: "hello", peer: from });
@@ -313,7 +313,7 @@ export class Group extends Emitter {
     this.l.debug("signal received", { t: msg.t, from, id: msg.id, path: viaLink ? `mesh:${viaLink.remoteId}` : "server" });
     if (msg.t === "hello") return void this.#onHello(from, msg);
     if (msg.t === "bye") {
-      if (this.peers.has(from)) this.#dropPeer(from, msg.reason === "leave" ? "left" : msg.reason ?? "left");
+      if (this.connections.has(from)) this.#dropPeer(from, msg.reason === "leave" ? "left" : msg.reason ?? "left");
       return;
     }
     const link = this.links.get(from);
@@ -334,7 +334,7 @@ export class Group extends Emitter {
         this.l.warn("rejected relayed security-relevant signal", { t: msg.t, from: msg.from, via: link.remoteId });
         return;
       }
-      if (msg.from !== link.remoteId && !this.peers.has(msg.from)) return;
+      if (msg.from !== link.remoteId && !this.connections.has(msg.from)) return;
       this.#onSignal(msg.from, msg, link);
       return;
     }
@@ -423,7 +423,7 @@ export class Group extends Emitter {
       return;
     }
     if (dst === this.selfId) {
-      const peer = this.peers.get(src);
+      const peer = this.connections.get(src);
       if (!peer) return;
       const relayed = src !== link.remoteId;
       if (relayed && !this.routing.acceptsRelayed(src, link.remoteId)) {
@@ -437,7 +437,7 @@ export class Group extends Emitter {
   }
 
   #onDrain(link) {
-    for (const peer of this.peers.values()) {
+    for (const peer of this.connections.values()) {
       const r = peer.routeInfo;
       if (r && (r.kind === "direct" ? peer.id : r.via) === link.remoteId) peer.pump();
     }
@@ -447,7 +447,7 @@ export class Group extends Emitter {
 
   /** @internal link id whose received tracks of `origin` the stable stream should use */
   mediaSourceFor(origin) {
-    const r = this.peers.get(origin)?.routeInfo;
+    const r = this.connections.get(origin)?.routeInfo;
     if (!r) return origin;
     return r.kind === "direct" ? origin : r.via;
   }
@@ -516,7 +516,7 @@ export class Group extends Emitter {
   #onVisibility(hidden) {
     this.log.write("info", "group", hidden ? "page hidden" : "page visible");
     for (const link of this.links.values()) if (link.ctlOpen) link.setBackground(hidden);
-    for (const peer of this.peers.values()) {
+    for (const peer of this.connections.values()) {
       if (peer.routeInfo?.kind === "relay") peer.session.sendControl({ t: hidden ? "bg" : "fg" });
     }
     if (!hidden) {
@@ -539,7 +539,7 @@ export class Group extends Emitter {
   /** Sends `bye` to all peers via mesh and signaling. Usable from `pagehide`. */
   leave() {
     if (this.#closed) return;
-    for (const id of this.peers.keys()) {
+    for (const id of this.connections.keys()) {
       const msg = { t: "bye", reason: "leave" };
       const link = this.links.get(id);
       if (link?.ctlOpen) link.sendCtl({ t: "sig", msg: { ...msg, from: this.selfId, to: id, id: randomId(12) } });
@@ -567,7 +567,7 @@ export class Group extends Emitter {
   close(reason = "closed") {
     if (this.#closed) return;
     this.log.write("info", "group", "group closed", { reason });
-    for (const id of [...this.peers.keys()]) this.#dropPeer(id, reason);
+    for (const id of [...this.connections.keys()]) this.#dropPeer(id, reason);
     for (const link of this.links.values()) link.close(reason);
     this.links.clear();
     this.#closed = true;

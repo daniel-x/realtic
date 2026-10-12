@@ -1,12 +1,12 @@
 /**
- * Stable object for one remote peer (plan section 3). It survives link rebuilds, ICE restarts and
+ * End to end connection to one remote peer, direct or through a relay (plan section 3). It survives link rebuilds, ICE restarts and
  * route switches, so app state bound to it never has to be rebuilt (doc §3.8).
  *
  * Events: `statechange` (state, reason), `routechange` (route), `channel` (RealticChannel),
  * `track` ({track, stream, tag, origin, kind}), `trackreplaced` ({track, oldTrack, stream, tag}),
  * `trackended` ({track, stream, tag}).
  */
-export class Peer extends Emitter {
+export class RealticConnection extends Emitter {
     /**
      * @param {object} group internal group interface
      * @param {string} id
@@ -36,7 +36,7 @@ export class Peer extends Emitter {
     /** Internal route descriptor. */
     get routeInfo(): any;
     /** The direct link's RTCPeerConnection, for advanced use. */
-    get connection(): any;
+    get rtcPeerConnection(): any;
     /** End to end liveness monitor of relayed routes. */
     get e2e(): LivenessMonitor;
     /**

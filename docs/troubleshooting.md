@@ -3,7 +3,7 @@
 ## Collect Both Logs
 
 realtic records every state change, signaling message, liveness verdict, ICE restart, relay
-decision and candidate pair dump in a ring buffer from the moment the `Group` is created. A
+decision and candidate pair dump in a ring buffer from the moment the `RealticGroup` is created. A
 connection has two ends; read both logs before concluding anything.
 
 ```js

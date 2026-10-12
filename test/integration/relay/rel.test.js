@@ -426,7 +426,7 @@ for (const pairing of pairings()) {
         await withScenario(`REL-17-${tag}`, { browsers: browsersFor(pairing, 3, relayOther), config: FAST, peerConfig: { 1: { protocol: { major: 1, minor: 7, features: ["e2e-rel", "relay", "future"] } }, 2: { protocol: { major: 2, minor: 0, features: [] } } } }, async (s) => {
           await s.meshAll();
           await s.waitState(0, 1, "connected", 20000);
-          const remote = await s.eval(0, (id) => window.t.group.peers.get(id).remote.proto, s.id(1));
+          const remote = await s.eval(0, (id) => window.t.group.connections.get(id).remote.proto, s.id(1));
           assert.equal(remote.minor, 0);
           assert.deepEqual(remote.features, ["e2e-rel", "relay"]);
           await s.waitState(0, 2, "unreachable", 20000);

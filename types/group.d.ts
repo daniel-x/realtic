@@ -2,10 +2,10 @@
  * A group of peers in a mesh (plan section 3). The app owns membership: it calls `addPeer` and
  * `removePeer`, or enables `autoPeers` to follow the adapter's presence events.
  *
- * Events: `peer` (Peer) when a peer object is created, `peerleft` (Peer, reason),
- * `presence` ({type, peer}).
+ * Events: `connection` (RealticConnection) when a connection is created, `peerleft`
+ * (RealticConnection, reason), `presence` ({type, peer}).
  */
-export class Group extends Emitter {
+export class RealticGroup extends Emitter {
     /**
      * @param {object} options
      * @param {string} [options.selfId] fresh per page load (doc §7); generated when absent
@@ -26,8 +26,8 @@ export class Group extends Emitter {
         RTCPeerConnection?: typeof RTCPeerConnection;
         autoPeers?: boolean;
     });
-    /** @type {Map<string, Peer>} */
-    peers: Map<string, Peer>;
+    /** @type {Map<string, RealticConnection>} */
+    connections: Map<string, RealticConnection>;
     /** @type {Map<string, DirectLink>} */
     links: Map<string, DirectLink>;
     selfId: string;
@@ -193,10 +193,10 @@ export class Group extends Emitter {
     /** True when TURN servers are configured. */
     get hasTurn(): boolean;
     /**
-     * Adds a peer to the group and starts connecting to it. Returns the stable Peer object.
+     * Adds a peer to the group and starts connecting to it. Returns the stable RealticConnection.
      * @param {string} peerId
      */
-    addPeer(peerId: string): Peer;
+    addPeer(peerId: string): RealticConnection;
     /**
      * Removes a peer: sends `bye` and closes its link.
      * @param {string} peerId
@@ -278,7 +278,7 @@ export class Group extends Emitter {
     #private;
 }
 import { Emitter } from "./util/emitter.js";
-import { Peer } from "./peer.js";
+import { RealticConnection } from "./connection.js";
 import { DirectLink } from "./link/direct-link.js";
 import { Log } from "./diag/log.js";
 import { SignalingRouter } from "./signaling/router.js";

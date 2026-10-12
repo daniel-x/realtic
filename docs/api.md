@@ -1,13 +1,13 @@
 # realtic API
 
 ```js
-import { Group } from "realtic";
+import { RealticGroup } from "realtic";
 ```
 
-## Group
+## RealticGroup
 
 ```js
-const group = new Group({
+const group = new RealticGroup({
   selfId,          // optional, generated when absent; use a fresh id per page load
   signaling,       // { url, group, type? } of a reference server, or an adapter (see below)
   iceServers,      // passed to RTCPeerConnection (TURN handling: config.turnMode)
@@ -18,9 +18,9 @@ const group = new Group({
 
 | Member | Description |
 | ------ | ----------- |
-| `addPeer(id)` | adds a peer and starts connecting; returns the stable `Peer` |
+| `addPeer(id)` | adds a peer and starts connecting; returns the stable `RealticConnection` |
 | `removePeer(id)` | sends `bye`, closes the link |
-| `peers` | `Map<id, Peer>` |
+| `connections` | `Map<id, RealticConnection>` |
 | `publish(track, { tag, to })` | publishes a local track to `"all"` or a list of peer ids; returns a `Publication` |
 | `setSubscription(origin, { audio, video, tags })` | which media of `origin` this side wants; unwanted flows stop at their source |
 | `leave()` | sends `bye` over the mesh and the signaling server (beacon when supported) and closes; called on `pagehide` automatically |
@@ -31,9 +31,10 @@ const group = new Group({
 | `log` | the ring buffer logger, see below |
 | `ready` | promise, resolves when keys and capabilities are collected |
 
-Events: `peer` (Peer), `peerleft` (Peer, reason), `presence` ({ type, peer }).
+Events: `connection` (RealticConnection), `peerleft` (RealticConnection, reason), `presence` ({ type,
+peer }).
 
-## Peer
+## RealticConnection
 
 | Member | Description |
 | ------ | ----------- |
@@ -44,7 +45,7 @@ Events: `peer` (Peer), `peerleft` (Peer, reason), `presence` ({ type, peer }).
 | `lastError`, `hint` | failure details; hints in `HINT_TEXT` |
 | `createChannel(label, init)` | end to end data channel, `init`: `ordered`, `maxRetransmits`, `maxPacketLifeTime`, `protocol` |
 | `requestLog()` | promise of the remote side's diagnostic report (needs its `shareLogWithPeers`) |
-| `connection` | the direct link's current `RTCPeerConnection`, for advanced use |
+| `rtcPeerConnection` | the direct link's current `RTCPeerConnection`, for advanced use |
 
 Events: `statechange` (state, reason), `routechange` (route), `channel` (RealticChannel),
 `track` ({ track, stream, tag, kind, origin, pub }), `trackreplaced` ({ track, oldTrack, stream,
@@ -53,8 +54,8 @@ tag }), `trackended` ({ track, stream, tag }).
 The `stream` of a `track` event is one `MediaStream` per publication. It stays the same across
 route changes, ICE restarts and rebuilds; the library swaps the track inside it.
 
-The `Peer` object stays the same for the life of the remote page, so UI bound to it never has to
-be rebuilt.
+The `RealticConnection` object stays the same for the life of the remote page, so UI bound to it
+never has to be rebuilt.
 
 ## RealticChannel
 
@@ -99,7 +100,7 @@ entries.
 
 ## Signaling Adapters
 
-`Group({ signaling })` accepts settings `{ url, group, type, fastMs, idleMs }` and creates the
+`RealticGroup({ signaling })` accepts settings `{ url, group, type, fastMs, idleMs }` and creates the
 adapter with `createSignaling(settings, selfId)`. `type` defaults to `"websocket"` for `ws:` and
 `wss:` URLs and to `"polling"` otherwise.
 

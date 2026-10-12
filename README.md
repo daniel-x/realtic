@@ -22,18 +22,18 @@ playing across route changes.
 ## Quick Start
 
 ```js
-import { Group } from "realtic";
+import { RealticGroup } from "realtic";
 
-const group = new Group({
+const group = new RealticGroup({
   signaling: { url: "https://example.com/realtic/signal.php", group: "demo" },
   iceServers: [{ urls: "stun:stun.example.com:3478" }],
   autoPeers: true,
 });
 
-group.on("peer", (peer) => {
-  peer.on("statechange", (state) => console.log(peer.id, state, peer.route));
-  peer.on("track", ({ stream }) => (videoFor(peer).srcObject = stream));
-  peer.on("channel", (ch) => (ch.onmessage = (e) => console.log(e.data)));
+group.on("connection", (conn) => {
+  conn.on("statechange", (state) => console.log(conn.id, state, conn.route));
+  conn.on("track", ({ stream }) => (videoFor(conn).srcObject = stream));
+  conn.on("channel", (ch) => (ch.onmessage = (e) => console.log(e.data)));
 });
 
 const media = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });

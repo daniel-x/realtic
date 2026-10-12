@@ -1,5 +1,5 @@
 // Test page controller: the Node test drives one peer per page through `window.t`.
-import { Group, attachMedia } from "../../../src/index.js";
+import { RealticGroup, attachMedia } from "../../../src/index.js";
 
 const BITS = 16;
 const BLOCK = 20;
@@ -32,9 +32,9 @@ t.start = ({ id, signaling: signalingOptions, groupName = "test", config = {}, i
   const cfg = { ...config, testHooks };
   if (config.relayDenyAll) cfg.allowRelay = () => false;
   for (const k of ["probeIceServers", "protocol", "caps", "relayDenyAll"]) delete cfg[k];
-  const group = new Group({ selfId: id, signaling: { ...signalingOptions, group: groupName }, iceServers, config: cfg, autoPeers });
+  const group = new RealticGroup({ selfId: id, signaling: { ...signalingOptions, group: groupName }, iceServers, config: cfg, autoPeers });
   t.group = group;
-  group.on("peer", (peer) => wirePeer(peer));
+  group.on("connection", (peer) => wirePeer(peer));
   group.on("peerleft", (peer, reason) => ev("peerleft", { peer: peer.id, reason }));
   return group.selfId;
 };
@@ -67,10 +67,10 @@ function registerChannel(peerId, ch) {
 
 t.addPeer = (id) => void t.group.addPeer(id);
 t.removePeer = (id) => t.group.removePeer(id);
-t.state = (id) => t.group.peers.get(id)?.state ?? null;
-t.route = (id) => t.group.peers.get(id)?.route ?? null;
+t.state = (id) => t.group.connections.get(id)?.state ?? null;
+t.route = (id) => t.group.connections.get(id)?.route ?? null;
 t.peerInfo = (id) => {
-  const p = t.group.peers.get(id);
+  const p = t.group.connections.get(id);
   return p ? { state: p.state, reason: p.reason, route: p.route, lastError: p.lastError, hint: p.hint } : null;
 };
 t.linkInfo = (id) => {
@@ -79,7 +79,7 @@ t.linkInfo = (id) => {
 };
 
 t.createChannel = (peerId, label, init) => {
-  const ch = t.group.peers.get(peerId).createChannel(label, init);
+  const ch = t.group.connections.get(peerId).createChannel(label, init);
   registerChannel(peerId, ch);
   return ch.id;
 };
@@ -266,7 +266,7 @@ t.logText = () => t.group.log.text();
 t.report = () => t.group.diagnosticReport();
 t.requestLog = async (peerId) => {
   try {
-    const r = await t.group.peers.get(peerId).requestLog(8000);
+    const r = await t.group.connections.get(peerId).requestLog(8000);
     return { ok: true, entries: r.log.length, selfId: r.selfId };
   } catch (e) {
     return { ok: false, error: e.message };

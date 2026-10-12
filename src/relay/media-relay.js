@@ -98,7 +98,7 @@ export class MediaRelay {
   /** Re-sends all our subscriptions over `link` (after it opened). */
   resendSubscriptions(link) {
     const g = this.#group;
-    for (const origin of g.peers.keys()) {
+    for (const origin of g.connections.keys()) {
       const sub = g.subscription(origin);
       if (!sub) continue;
       if (origin === link.remoteId || this.#routing.hasFlowVia(origin, link.remoteId)) link.sendCtl({ t: "subscription", origin, for: g.selfId, ...sub });
@@ -118,14 +118,14 @@ export class MediaRelay {
     for (const pub of g.media.pubs.values()) {
       let carried = false;
       let active = false;
-      const neighborRoute = g.peers.get(neighbor)?.routeInfo;
+      const neighborRoute = g.connections.get(neighbor)?.routeInfo;
       if (pub.targets(neighbor) && neighborRoute?.kind === "direct") {
         carried = true;
         active ||= wants(this.subscription(neighbor, g.selfId), pub.kind, pub.tag);
       }
       for (const [target, p] of this.#routing.pairs) {
         if (target === neighbor || !pub.targets(target)) continue;
-        const route = g.peers.get(target)?.routeInfo;
+        const route = g.connections.get(target)?.routeInfo;
         for (const f of p.flows.values()) {
           if (f.via !== neighbor || f.state !== "open") continue;
           carried = true;
@@ -306,7 +306,7 @@ export class MediaRelay {
 
   /** Tells each peer which media kinds we publish to it, when that changed. */
   tick() {
-    for (const peer of this.#group.peers.values()) {
+    for (const peer of this.#group.connections.values()) {
       if (!peer.routeInfo) continue;
       const kinds = this.kindsFor(peer.id).sort().join(",");
       if (this.#sentKinds.get(peer.id) === kinds) continue;

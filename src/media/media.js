@@ -68,7 +68,7 @@ export class MediaManager {
     this.l = group.log.scope("media");
     this.streams = new StableStreams({
       preferredSource: (origin) => group.mediaSourceFor(origin),
-      emit: (origin, event, detail) => group.peers.get(origin)?.emit(event, detail),
+      emit: (origin, event, detail) => group.connections.get(origin)?.emit(event, detail),
       stableTracks: group.config.stableTracks,
       clock: group.clock,
     });
