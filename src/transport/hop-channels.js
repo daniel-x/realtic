@@ -5,7 +5,10 @@
  * - `ctl` (id 0) reliable ordered: JSON control messages and the 1 byte beat.
  * - `rel` (id 1) reliable ordered: envelopes of reliable channels.
  * - `unrel` (id 2) unordered, maxRetransmits 0: envelopes of unreliable channels and beats.
- * - partial reliability modes: ids from 3, owned by the impolite side.
+ * - partial reliability modes: ids from 3, owned by the impolite side. The impolite side creates
+ *   the channel and announces it with `transport-open`; it holds the channel's envelopes until
+ *   the polite side answers `transport-ready`, because data that arrives before the polite side
+ *   created its end of the negotiated channel is lost.
  *
  * Envelopes are queued per flow and sent round robin while the channel's `bufferedAmount` is
  * below the high water mark, so one bulk flow does not starve the others.
@@ -57,6 +60,7 @@ export class HopChannels extends Emitter {
   #ctlBacklog = [];
   #nextId = 3;
   #pendingModes = new Set();
+  #unconfirmed = new Set();
   #closed = false;
 
   /**
@@ -208,7 +212,7 @@ export class HopChannels extends Emitter {
   #drain(key) {
     const dc = this.#channels.get(key);
     const queues = this.#queues.get(key);
-    if (!dc || !queues || dc.readyState !== "open") return;
+    if (!dc || !queues || dc.readyState !== "open" || this.#unconfirmed.has(key)) return;
     let progressed = true;
     while (progressed && dc.bufferedAmount < this.highWater) {
       progressed = false;
@@ -242,6 +246,7 @@ export class HopChannels extends Emitter {
     if (!mode) return;
     if (this.#impolite) {
       const id = this.#nextId++;
+      this.#unconfirmed.add(key);
       this.#create(key, id, mode);
       this.sendCtl({ t: "transport-open", id, mode: { ...mode } });
     } else {
@@ -259,6 +264,12 @@ export class HopChannels extends Emitter {
       const key = modeKey(msg.mode);
       this.#pendingModes.delete(key);
       if (!this.#channels.has(key)) this.#create(key, msg.id, parseModeKey(key));
+      this.sendCtl({ t: "transport-ready", id: msg.id, mode: msg.mode });
+      return true;
+    }
+    if (msg.t === "transport-ready" && this.#impolite) {
+      const key = modeKey(msg.mode);
+      if (this.#unconfirmed.delete(key)) this.#drain(key);
       return true;
     }
     if (msg.t === "open-transport" && this.#impolite) {

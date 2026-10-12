@@ -83,6 +83,7 @@ JSON `{ t, ...fields }`:
 | `route-use` | `kind: "direct"` | the route owner switched the pair to the direct link |
 | `bg`, `fg` | none | the sender's page went to the background or came back |
 | `transport-open` | `id, mode` | impolite side created a partial reliability transport |
+| `transport-ready` | `id, mode` | polite side created its end; the impolite side starts sending on it |
 | `open-transport` | `mode` | polite side asks for one |
 | `slot-request` | `req, kind` | polite side asks for a send transceiver |
 | `mid-map` | `mids: { [mid]: { origin, pub, tag, kind } }` | what the sender's transceivers carry |
