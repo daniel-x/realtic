@@ -1,0 +1,247 @@
+import { SerialQueue } from "../signaling/queue.js";
+import { StableStreams } from "./stable-stream.js";
+import { randomId } from "../util/ids.js";
+
+/**
+ * A published local track (plan section 3). `replaceTrack` swaps the track on every sender
+ * without renegotiation (doc §6).
+ */
+export class Publication {
+  #media;
+
+  constructor(media, track, { tag = track.kind, to = "all" } = {}) {
+    this.#media = media;
+    this.id = randomId(8);
+    this.track = track;
+    this.kind = track.kind;
+    this.tag = tag;
+    this.to = to === "all" ? "all" : new Set(to);
+    this.closed = false;
+  }
+
+  /** True when the publication targets `peerId`. */
+  targets(peerId) {
+    return this.to === "all" || this.to.has(peerId);
+  }
+
+  /**
+   * Replaces the published track on every sender.
+   * @param {MediaStreamTrack} track
+   */
+  async replaceTrack(track) {
+    if (track && track.kind !== this.kind) throw new TypeError(`expected a ${this.kind} track`);
+    this.track = track;
+    await this.#media.replaceSource(`self:${this.id}`, track);
+  }
+
+  /** Stops publishing. */
+  close() {
+    if (this.closed) return;
+    this.closed = true;
+    this.#media.unpublish(this);
+  }
+}
+
+/**
+ * Media over links (plan section 10). For each link the group's media plan lists the sources it
+ * must carry (own publications and, on a relay, forwarded tracks); this class keeps the link's
+ * send slots, `mid-map` announcements and encoding activity in line with that plan.
+ *
+ * Receiving: `mid-map` from a neighbor maps its transceiver mids to origin and publication; the
+ * received tracks feed the stable streams.
+ */
+export class MediaManager {
+  /** @type {Map<string, Publication>} */
+  pubs = new Map();
+  /** link id -> Map<source key, {slot, info, active}> */
+  #sending = new Map();
+  /** link id -> Map<mid, info> as last announced by the neighbor */
+  #remoteMids = new Map();
+  /** link id -> Map<mid, track> attached to stable streams or forwarding */
+  #attached = new Map();
+  #queues = new Map();
+  #group;
+
+  /** @param {object} group internal group interface */
+  constructor(group) {
+    this.#group = group;
+    this.l = group.log.scope("media");
+    this.streams = new StableStreams({
+      preferredSource: (origin) => group.mediaSourceFor(origin),
+      emit: (origin, event, detail) => group.peers.get(origin)?.emit(event, detail),
+    });
+  }
+
+  /**
+   * @param {MediaStreamTrack} track
+   * @param {{tag?: string, to?: "all" | string[]}} [options]
+   */
+  publish(track, options) {
+    const pub = new Publication(this, track, options);
+    this.pubs.set(pub.id, pub);
+    this.l.info("publish", { pub: pub.id, kind: pub.kind, tag: pub.tag, to: pub.to === "all" ? "all" : [...pub.to] });
+    this.#group.mediaChanged();
+    return pub;
+  }
+
+  /** @param {Publication} pub */
+  unpublish(pub) {
+    this.pubs.delete(pub.id);
+    this.l.info("unpublish", { pub: pub.id });
+    this.#group.mediaChanged();
+  }
+
+  /** Replaces the track of a source on every link that carries it. */
+  async replaceSource(key, track) {
+    for (const sending of this.#sending.values()) {
+      const s = sending.get(key);
+      if (s) await s.slot.tr.sender.replaceTrack(track).catch((e) => this.l.warn("replaceTrack failed", { error: e.message }));
+    }
+  }
+
+  /**
+   * Brings a link's slots in line with the plan. Serialized per link.
+   * @param {import("../link/direct-link.js").DirectLink} link
+   */
+  sync(link) {
+    let q = this.#queues.get(link.remoteId);
+    if (!q) this.#queues.set(link.remoteId, (q = new SerialQueue((e) => this.l.warn("media sync failed", { peer: link.remoteId, error: e?.message }))));
+    if (q.pending) return;
+    q.pending = true;
+    q.push(async () => {
+      q.pending = false;
+      await this.#sync(link);
+    });
+  }
+
+  async #sync(link) {
+    if (!link.ctlOpen) return;
+    const plan = this.#group.mediaPlan(link);
+    let sending = this.#sending.get(link.remoteId);
+    if (!sending) this.#sending.set(link.remoteId, (sending = new Map()));
+    for (const [key, s] of sending) {
+      if (!link.ownsSlot(s.slot)) sending.delete(key);
+    }
+    let changed = false;
+    for (const [key, s] of [...sending]) {
+      if (plan.some((p) => p.key === key)) continue;
+      link.releaseSendSlot(s.slot);
+      sending.delete(key);
+      changed = true;
+    }
+    for (const p of plan) {
+      let s = sending.get(p.key);
+      if (!s) {
+        let slot;
+        try {
+          slot = await link.acquireSendSlot(p.info.kind, p.key);
+        } catch (error) {
+          this.l.warn("no send slot", { peer: link.remoteId, key: p.key, error: error.message });
+          continue;
+        }
+        if (!link.ownsSlot(slot)) continue;
+        s = { slot, info: p.info, active: null, track: null };
+        sending.set(p.key, s);
+        changed = true;
+      }
+      if (s.track !== p.track) {
+        s.track = p.track;
+        await s.slot.tr.sender.replaceTrack(p.track).catch((e) => this.l.warn("replaceTrack failed", { error: e.message }));
+      }
+      if (s.active !== p.active) {
+        s.active = p.active;
+        await setActive(s.slot.tr.sender, p.active, p.params).catch((e) => this.l.warn("setParameters failed", { error: e.message }));
+      }
+      if (p.params && s.params !== JSON.stringify(p.params)) {
+        s.params = JSON.stringify(p.params);
+        await setActive(s.slot.tr.sender, p.active, p.params).catch(() => {});
+      }
+      if (JSON.stringify(s.info) !== JSON.stringify(p.info)) {
+        s.info = p.info;
+        changed = true;
+      }
+    }
+    if (changed || !sending.announced) {
+      sending.announced = true;
+      const mids = {};
+      for (const s of sending.values()) if (s.slot.tr.mid != null) mids[s.slot.tr.mid] = s.info;
+      link.sendCtl({ t: "mid-map", mids });
+      this.l.debug("mid-map sent", { peer: link.remoteId, count: Object.keys(mids).length });
+    }
+  }
+
+  /** Senders of a link, for bandwidth control. */
+  senders(linkId) {
+    return this.#sending.get(linkId) ?? new Map();
+  }
+
+  /** Forgets a link's sending and receiving state (rebuild or close). */
+  resetLink(linkId) {
+    this.#sending.delete(linkId);
+    this.#remoteMids.delete(linkId);
+    this.#attached.delete(linkId);
+    this.streams.detachSource(linkId);
+    this.#group.forwardedSourcesGone(linkId);
+  }
+
+  /**
+   * Handles `mid-map` from a neighbor.
+   * @param {import("../link/direct-link.js").DirectLink} link
+   * @param {{mids: Record<string, {origin: string, pub: string, tag: string, kind: string}>}} msg
+   */
+  onMidMap(link, msg) {
+    const mids = new Map(Object.entries(msg.mids ?? {}));
+    this.#remoteMids.set(link.remoteId, mids);
+    this.resolve(link);
+  }
+
+  /** Re-resolves announced mids to tracks, e.g. after a negotiation round. */
+  resolve(link) {
+    const mids = this.#remoteMids.get(link.remoteId);
+    if (!mids) return;
+    let attached = this.#attached.get(link.remoteId);
+    if (!attached) this.#attached.set(link.remoteId, (attached = new Map()));
+    for (const [mid, a] of [...attached]) {
+      const now = mids.get(mid);
+      if (now && now.origin === a.info.origin && now.pub === a.info.pub) continue;
+      attached.delete(mid);
+      this.#detach(link, a.info);
+    }
+    for (const [mid, info] of mids) {
+      if (attached.has(mid)) continue;
+      const tr = link.transceiver(mid);
+      if (!tr || !tr.receiver.track) continue;
+      attached.set(mid, { info, track: tr.receiver.track });
+      this.#attach(link, info, tr.receiver.track);
+    }
+  }
+
+  #attach(link, info, track) {
+    this.l.info("remote track", { via: link.remoteId, origin: info.origin, pub: info.pub, kind: info.kind, tag: info.tag });
+    if (info.origin !== this.#group.selfId && this.#group.subscribed(info.origin, info.kind, info.tag)) {
+      this.streams.attach(info, link.remoteId, track);
+    }
+    this.#group.receivedSource(link, info, track);
+  }
+
+  #detach(link, info) {
+    this.streams.detach(info.origin, info.pub, link.remoteId);
+    this.#group.receivedSourceGone(link, info);
+  }
+
+  /** Received tracks per link, for forwarding: Map<link id, Map<mid, {info, track}>>. */
+  get attached() {
+    return this.#attached;
+  }
+}
+
+async function setActive(sender, active, params) {
+  const p = sender.getParameters();
+  if (!p.encodings || !p.encodings.length) return;
+  for (const e of p.encodings) {
+    e.active = active;
+    if (params?.maxBitrate !== undefined) e.maxBitrate = params.maxBitrate;
+    if (params?.scaleResolutionDownBy !== undefined && sender.track?.kind === "video") e.scaleResolutionDownBy = params.scaleResolutionDownBy;
+  }
+  await sender.setParameters(p);
+}

@@ -18,6 +18,8 @@ export const DEFAULTS = Object.freeze({
   /** Stale threshold while the remote side announced background mode. */
   BACKGROUND_STALE_MS: 20000,
 
+  /** Time a new connection may take until `ctl` opens before recovery starts. */
+  connectTimeoutMs: 12000,
   /** Delays before the ICE restarts of one recovery attempt; after the last, a full rebuild. */
   iceRestartBackoffMs: [1000, 3000, 6000],
   /** Number of full rebuilds after the ICE restarts before the direct link is `unreachable`. */

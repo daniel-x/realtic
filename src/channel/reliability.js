@@ -34,6 +34,7 @@ export class ChannelSender {
   #sentBytes = 0;
   #creditLimit = INITIAL_CREDIT;
   #timer = null;
+  #pumping = false;
 
   /**
    * @param {object} options
@@ -88,6 +89,16 @@ export class ChannelSender {
 
   /** Hands queued messages to the route while credit and route capacity allow. */
   pump() {
+    if (this.#pumping) return;
+    this.#pumping = true;
+    try {
+      this.#pumpNow();
+    } finally {
+      this.#pumping = false;
+    }
+  }
+
+  #pumpNow() {
     const before = this.#queuedBytes;
     while (this.#queue.length) {
       const msg = this.#queue[0];
