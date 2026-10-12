@@ -2,6 +2,7 @@
 import { Scenario, sleep, waitFor, PAIRINGS, pairings, closeBrowsers } from "./harness/scenario.js";
 
 export { sleep, waitFor, PAIRINGS, pairings, closeBrowsers };
+export { ms, tolerance, scaleTiming, TIME_SCALE } from "./harness/timing.js";
 
 /** Fast timings for recovery tests, so a scenario does not take minutes. */
 export const FAST_RECOVERY = {

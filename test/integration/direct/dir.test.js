@@ -4,7 +4,7 @@ import { describe, test, after } from "node:test";
 import assert from "node:assert/strict";
 import {
   withScenario, connectAll, sleep, waitFor, PAIRINGS, pairings, closeBrowsers, states, openChannel, messages,
-  sendMany, assertSequence, session, logMatches, FAST_RECOVERY, events,
+  sendMany, assertSequence, session, logMatches, FAST_RECOVERY, events, ms, tolerance, scaleTiming,
 } from "../common.js";
 import { TestStunServer } from "../harness/stun.js";
 
@@ -74,8 +74,8 @@ for (const pairing of pairings()) {
         const slow = st.find((e) => e.state === "slow");
         const stale = st.find((e) => e.state === "reconnecting");
         assert.ok(slow, "slow state seen");
-        near(slow.time - t0, 1000, 600, "slow after");
-        near(stale.time - t0, 5000, 900, "stale after");
+        near(slow.time - t0, ms(1000), tolerance(600), "slow after");
+        near(stale.time - t0, ms(5000), tolerance(900), "stale after");
         const restarts = await logMatches(s, s.id(0) > s.id(1) ? 0 : 1, /ICE restart/, t0);
         assert.ok(restarts.length >= 1, "ICE restart logged");
         await sendMany(s, 0, 1, "chat", "x", 20);
@@ -98,7 +98,7 @@ for (const pairing of pairings()) {
         const t0 = Date.now();
         s.block(0, 1);
         await sendMany(s, 0, 1, "chat", "o", 100);
-        await sleep(2500);
+        await sleep(ms(2500));
         s.block(0, 1, false);
         await s.waitState(1, 0, "connected", 5000);
         await waitFor(async () => (await messages(s, 1, 0, "chat")).length >= 100, 10000, "outage messages");
@@ -122,7 +122,7 @@ for (const pairing of pairings()) {
         const info = await s.eval(0, (id) => window.t.peerInfo(id), s.id(1));
         assert.ok(info.reason, "unreachable has a reason");
         console.log(`    DIR-4 ${pairing}: unreachable after ${Date.now() - t0} ms, reason: ${info.reason}`);
-        await sleep(8000);
+        await sleep(ms(8000));
         assert.equal(await s.eval(0, (id) => window.t.state(id), s.id(1)), "unreachable", "stays unreachable while blocked");
         s.block(0, 1, false);
         await s.waitState(0, 1, "connected", 30000);
@@ -204,24 +204,24 @@ for (const pairing of pairings()) {
       });
     });
 
-    test("DIR-9 frozen page: 3 s and 10 s, data-only and media; hidden tab judged by consent", async () => {
+    test("DIR-9 frozen page: below and above the stale threshold, data-only and media; hidden tab judged by consent", async () => {
       await withScenario(`DIR-9-${pairing}`, { browsers: two(pairing) }, async (s) => {
         await connectAll(s);
         await openChannel(s, 0, 1, "chat");
         let t0 = Date.now();
-        await s.eval(0, () => window.t.hook.busy(3000));
+        await s.eval(0, (d) => window.t.hook.busy(d), ms(3000));
         await sleep(500);
         assert.equal(await s.eval(1, (id) => window.t.state(id), s.id(0)), "connected");
-        assert.ok(!(await states(s, 1, 0, t0)).some((e) => e.state === "reconnecting"), "3 s freeze is not stale");
+        assert.ok(!(await states(s, 1, 0, t0)).some((e) => e.state === "reconnecting"), "a freeze below the stale threshold is not stale");
         t0 = Date.now();
         const before = await session(s, 1, 0);
-        await s.eval(0, () => window.t.hook.busy(10000));
+        await s.eval(0, (d) => window.t.hook.busy(d), ms(10000));
         await s.waitState(1, 0, "connected", 30000);
         await s.waitState(0, 1, "connected", 30000);
-        assert.ok((await states(s, 1, 0, t0)).some((e) => e.state === "reconnecting"), "10 s freeze is stale");
+        assert.ok((await states(s, 1, 0, t0)).some((e) => e.state === "reconnecting"), "a freeze twice the stale threshold is stale");
         await sendMany(s, 0, 1, "chat", "f", 10);
         await waitFor(async () => (await messages(s, 1, 0, "chat")).length >= 10, 10000, "messages after freeze");
-        console.log(`    DIR-9 ${pairing}: 10 s freeze rebuilt ${before !== (await session(s, 1, 0))}`);
+        console.log(`    DIR-9 ${pairing}: ${ms(10000)} ms freeze rebuilt ${before !== (await session(s, 1, 0))}`);
 
         // Media keeps a frozen page alive where camera media is produced outside page JavaScript
         // (Chromium's fake device; Firefox produces its fake camera on the page's main thread).
@@ -230,9 +230,9 @@ for (const pairing of pairings()) {
         await waitFor(async () => (await s.eval(1, (id) => window.t.inboundBytes(id, "video"), s.id(0))) > 10000, 15000, "camera media");
         await sleep(1000);
         t0 = Date.now();
-        await s.eval(0, () => window.t.hook.busy(7000));
+        await s.eval(0, (d) => window.t.hook.busy(d), ms(7000));
         await sleep(500);
-        assert.ok(!(await states(s, 1, 0, t0)).some((e) => e.state === "reconnecting"), "media counts as liveness during a 7 s freeze");
+        assert.ok(!(await states(s, 1, 0, t0)).some((e) => e.state === "reconnecting"), "media counts as liveness during a freeze above the stale threshold");
         await s.eval(0, () => window.t.unpublish("cam"));
         }
 
@@ -275,7 +275,7 @@ for (const pairing of pairings()) {
         await page.reload();
         await page.waitForFunction(() => window.t?.ready);
         const newId = `R${Math.random().toString(36).slice(2, 6)}`;
-        await page.evaluate((o) => window.t.start(o), { id: newId, signaling: s.server.signaling, config: FAST_RECOVERY, hooks: true });
+        await page.evaluate((o) => window.t.start(o), { id: newId, signaling: s.server.signaling, config: scaleTiming(FAST_RECOVERY), hooks: true });
         s.pages.delete(oldId);
         s.pages.set(newId, page);
         s.ids[3] = newId;

@@ -4,6 +4,7 @@ import { createSignalingServer } from "../../../server/node/server.js";
 import { createPhpServer } from "./php-server.js";
 import { openPage, closeBrowsers, dedicatedBrowser } from "./browsers.js";
 import { NetemProxy } from "./netem.js";
+import { scaleTiming } from "./timing.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
@@ -97,7 +98,7 @@ export class Scenario {
     await page.evaluate((o) => window.t.start(o), {
       id,
       signaling: this.server.signaling,
-      config: { ...this.config, ...(this.peerConfig[id] ?? {}), ...(this.peerConfig[this.ids.length] ?? {}), ...extraConfig },
+      config: scaleTiming({ ...this.config, ...(this.peerConfig[id] ?? {}), ...(this.peerConfig[this.ids.length] ?? {}), ...extraConfig }),
       iceServers: this.iceServers,
       hooks: !!this.proxy,
     });

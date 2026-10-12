@@ -4,7 +4,7 @@ import { describe, test, after } from "node:test";
 import assert from "node:assert/strict";
 import {
   withScenario, sleep, waitFor, PAIRINGS, pairings, closeBrowsers, states, openChannel, messages,
-  sendMany, assertSequence, logMatches, FAST_RECOVERY, events,
+  sendMany, assertSequence, logMatches, FAST_RECOVERY, events, ms, scaleTiming,
 } from "../common.js";
 import { createServer as createTurnServer } from "turn-server";
 
@@ -112,21 +112,21 @@ for (const pairing of pairings()) {
         await withScenario(`REL-3-${tag}`, { browsers: browsersFor(pairing, 5, relayOther), config: FAST }, async (s) => {
           if (MEDIA) await s.eval(0, () => window.t.publishCounter("camera"));
           await meshWithBlocks(s, [[0, 1]]);
-          const r = await waitRoute(s, 0, 1, "relay");
-          const active = s.index(r.via);
+          await waitRoute(s, 0, 1, "relay");
           await openChannel(s, 0, 1, "chat");
           await waitFor(async () => (await s.eval(0, (id) => window.t.stats().peers[id].flows.filter((f) => f.state === "open").length, s.id(1))) >= 2, 20000, "standby flow");
-          const flows = await s.eval(0, (id) => window.t.stats().peers[id].flows, s.id(1));
-          const standby = s.index(flows.find((f) => f.role === "standby" && f.state === "open").via);
           if (MEDIA) await waitFor(async () => (await s.eval(1, (k) => window.t.frames(k).length, `${s.id(0)}:camera`)) > 20, 20000, "video");
           const stop = stream(s, 0, 1, "chat", "m");
           await sleep(1000);
+          const active = s.index((await route(s, 0, 1)).via);
+          const flows = await s.eval(0, (id) => window.t.stats().peers[id].flows, s.id(1));
+          const standby = s.index(flows.find((f) => f.state === "open" && f.via !== s.id(active)).via);
           const t0 = Date.now();
           for (let i = 0; i < 5; i++) if (i !== active) s.block(active, i);
           await waitRoute(s, 0, 1, "relay", standby, 10000);
           const switched = (await events(s, 0, t0, "route")).find((e) => e.peer === s.id(1));
           console.log(`    REL-3 ${tag}: switched to standby after ${switched ? switched.time - t0 : "?"} ms`);
-          assert.ok(switched && switched.time - t0 < 2500, "early switch at slow");
+          assert.ok(switched && switched.time - t0 < Math.max(ms(2500), 1000), "early switch at slow");
           await sleep(1500);
           const sent = await stop();
           await waitFor(async () => (await messages(s, 1, 0, "chat")).length >= sent, 15000, "all messages");
@@ -147,11 +147,12 @@ for (const pairing of pairings()) {
       test("REL-4 standby dies while the active relay is fine: new standby, no impact", async () => {
         await withScenario(`REL-4-${tag}`, { browsers: browsersFor(pairing, 5, relayOther), config: FAST }, async (s) => {
           await meshWithBlocks(s, [[0, 1]]);
-          const r = await waitRoute(s, 0, 1, "relay");
+          await waitRoute(s, 0, 1, "relay");
           await openChannel(s, 0, 1, "chat");
           await waitFor(async () => (await s.eval(0, (id) => window.t.stats().peers[id].flows.filter((f) => f.role === "standby" && f.state === "open").length, s.id(1))) >= 1, 20000, "standby flow");
+          const r = await route(s, 0, 1);
           const flows = await s.eval(0, (id) => window.t.stats().peers[id].flows, s.id(1));
-          const standby = s.index(flows.find((f) => f.role === "standby").via);
+          const standby = s.index(flows.find((f) => f.state === "open" && f.via !== r.via).via);
           const stop = stream(s, 0, 1, "chat", "m");
           const t0 = Date.now();
           for (let i = 0; i < 5; i++) if (i !== standby) s.block(standby, i);
@@ -217,12 +218,12 @@ for (const pairing of pairings()) {
           const stop = stream(s, 0, 1, "chat", "m", 100);
           for (let i = 0; i < 10; i++) {
             s.block(active, 1, i % 2 === 0);
-            await sleep(2000);
+            await sleep(ms(2000));
           }
           s.block(active, 1, false);
           const sent = await stop();
           const changes = (await events(s, 0, t0, "route")).filter((e) => e.peer === s.id(1));
-          console.log(`    REL-7 ${tag}: ${changes.length} route changes in 20 s`);
+          console.log(`    REL-7 ${tag}: ${changes.length} route changes in ${ms(20000)} ms`);
           assert.ok(changes.length <= 6, `route changes ${changes.length}`);
           await waitFor(async () => (await messages(s, 1, 0, "chat")).length >= sent, 20000, "all messages");
           assertSequence(assert, await messages(s, 1, 0, "chat"), "m", sent);
@@ -232,16 +233,17 @@ for (const pairing of pairings()) {
       test("REL-8 relay frozen: end to end heartbeat detects it, switch to the standby", async () => {
         await withScenario(`REL-8-${tag}`, { browsers: browsersFor(pairing, 4, relayOther), config: FAST }, async (s) => {
           await meshWithBlocks(s, [[0, 1]]);
-          const r = await waitRoute(s, 0, 1, "relay");
-          const active = s.index(r.via);
+          await waitRoute(s, 0, 1, "relay");
           await openChannel(s, 0, 1, "chat");
           await waitFor(async () => (await s.eval(0, (id) => window.t.stats().peers[id].flows.filter((f) => f.role === "standby" && f.state === "open").length, s.id(1))) >= 1, 20000, "standby");
+          const r = await route(s, 0, 1);
+          const active = s.index(r.via);
           const t0 = Date.now();
-          const busy = s.eval(active, () => window.t.hook.busy(8000));
+          const busy = s.eval(active, (d) => window.t.hook.busy(d), ms(8000));
           await waitFor(async () => {
             const x = await route(s, 0, 1);
             return x?.kind === "relay" && x.via !== r.via;
-          }, 6000, "switch away from the frozen relay");
+          }, Math.max(ms(6000), 3000), "switch away from the frozen relay");
           console.log(`    REL-8 ${tag}: switched after ${Date.now() - t0} ms`);
           await busy;
           await sendMany(s, 0, 1, "chat", "f", 20);
@@ -259,7 +261,7 @@ for (const pairing of pairings()) {
           await page.waitForFunction(() => window.t?.ready);
           const newId = `R${Math.random().toString(36).slice(2, 6)}`;
           await page.exposeFunction("__noop", () => {}).catch(() => {});
-          await page.evaluate((o) => window.t.start(o), { id: newId, signaling: s.server.signaling, config: FAST, hooks: true });
+          await page.evaluate((o) => window.t.start(o), { id: newId, signaling: s.server.signaling, config: scaleTiming(FAST), hooks: true });
           s.pages.delete(oldId);
           s.pages.set(newId, page);
           s.ids[2] = newId;
