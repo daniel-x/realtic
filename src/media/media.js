@@ -97,8 +97,12 @@ export class MediaManager {
   async replaceSource(key, track) {
     for (const sending of this.#sending.values()) {
       const s = sending.get(key);
-      if (s) await s.slot.tr.sender.replaceTrack(track).catch((e) => this.l.warn("replaceTrack failed", { error: e.message }));
+      if (s) await this.#replaceTrack(s.slot, track);
     }
+  }
+
+  #replaceTrack(slot, track) {
+    return slot.tr.sender.replaceTrack(track).catch((e) => this.l.warn("replaceTrack failed", { error: e.message }));
   }
 
   /**
@@ -118,7 +122,7 @@ export class MediaManager {
 
   async #sync(link) {
     if (!link.ctlOpen) return;
-    const plan = this.#group.mediaPlan(link);
+    const plan = this.#group.routing.mediaRelay.plan(link);
     let sending = this.#sending.get(link.remoteId);
     if (!sending) this.#sending.set(link.remoteId, (sending = new Map()));
     for (const [key, s] of sending) {
@@ -148,7 +152,7 @@ export class MediaManager {
       }
       if (s.track !== p.track) {
         s.track = p.track;
-        await s.slot.tr.sender.replaceTrack(p.track).catch((e) => this.l.warn("replaceTrack failed", { error: e.message }));
+        await this.#replaceTrack(s.slot, p.track);
       }
       const applied = JSON.stringify({ active: p.active, params: p.params ?? null });
       if (s.applied !== applied) {
@@ -181,7 +185,7 @@ export class MediaManager {
     this.#remoteMids.delete(linkId);
     this.#attached.delete(linkId);
     this.streams.detachSource(linkId);
-    this.#group.forwardedSourcesGone(linkId);
+    this.#group.routing.mediaRelay.forwardedSourcesGone(linkId);
   }
 
   /**
@@ -221,17 +225,12 @@ export class MediaManager {
     if (info.origin !== this.#group.selfId && this.#group.subscribed(info.origin, info.kind, info.tag)) {
       this.streams.attach(info, link.remoteId, track);
     }
-    this.#group.receivedSource(link, info, track);
+    this.#group.routing.mediaRelay.receivedSource(link, info, track);
   }
 
   #detach(link, info) {
     this.streams.detach(info.origin, info.pub, link.remoteId);
-    this.#group.receivedSourceGone(link, info);
-  }
-
-  /** Received tracks per link, for forwarding: Map<link id, Map<mid, {info, track}>>. */
-  get attached() {
-    return this.#attached;
+    this.#group.routing.mediaRelay.receivedSourceGone(link, info);
   }
 }
 

@@ -75,8 +75,6 @@ export class MediaManager {
     }): void;
     /** Re-resolves announced mids to tracks, e.g. after a negotiation round. */
     resolve(link: any): void;
-    /** Received tracks per link, for forwarding: Map<link id, Map<mid, {info, track}>>. */
-    get attached(): Map<any, any>;
     #private;
 }
 import { StableStreams } from "./stable-stream.js";

@@ -56,8 +56,6 @@ export class Peer extends Emitter {
      * @param {number} [timeoutMs]
      */
     requestLog(timeoutMs?: number): Promise<any>;
-    /** True while the remote announced background mode end to end. */
-    get remoteBackground(): boolean;
     /**
      * Switches the sending route. Unacknowledged reliable data is resent on the new route.
      * @param {{kind: "direct"} | {kind: "relay", via: string, flow: string} | null} route

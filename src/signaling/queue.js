@@ -25,11 +25,6 @@ export class SerialQueue {
     this.#tail = run;
     return run;
   }
-
-  /** Resolves when all queued tasks are done. */
-  idle() {
-    return this.#tail;
-  }
 }
 
 /** Remembers recently seen message ids, bounded in size (doc §2.5). */

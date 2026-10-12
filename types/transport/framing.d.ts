@@ -108,8 +108,6 @@ export class Reassembler {
      * @param {Uint8Array} part
      */
     add(key: string, index: number, count: number, part: Uint8Array): Uint8Array<any>;
-    /** Drops all pending fragments whose key starts with `prefix`. */
-    dropPrefix(prefix: any): void;
     /** Bytes held in pending fragments. */
     get bytes(): number;
     #private;

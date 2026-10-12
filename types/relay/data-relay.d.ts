@@ -1,3 +1,5 @@
+/** True when relay flow `f` runs between peers `a` and `b`, in either direction. */
+export function connects(f: any, a: any, b: any): boolean;
 /**
  * Relay side of peer relaying (plan section 7.2, 9.3, decision D21): accepts or rejects relay
  * requests, forwards envelopes of accepted flows between its two neighbors, rewrites the index

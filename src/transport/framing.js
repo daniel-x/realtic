@@ -56,12 +56,16 @@ export function encode(e) {
     v.setUint16(o + 2, e.fragCount);
     o += 4;
   }
-  if (flags & FLAG.LIFETIME) v.setUint16(o, Math.max(0, Math.min(MAX_LIFETIME, Math.round(e.lifetime))));
+  if (flags & FLAG.LIFETIME) v.setUint16(o, clampLifetime(e.lifetime));
   out.set(payload, hl);
   return out;
 }
 
 const EMPTY = new Uint8Array(0);
+
+function clampLifetime(ms) {
+  return Math.max(0, Math.min(MAX_LIFETIME, Math.round(ms)));
+}
 
 /**
  * Decodes an envelope. The payload is a view into `buf`. Returns null for malformed input.
@@ -112,7 +116,7 @@ export function rewriteLifetime(buf, ms) {
   const flags = buf[2];
   if (!(flags & FLAG.LIFETIME)) return;
   const o = BASE_HEADER + (flags & FLAG.FRAGMENTED ? 4 : 0);
-  const value = Math.max(0, Math.min(MAX_LIFETIME, Math.round(ms)));
+  const value = clampLifetime(ms);
   buf[o] = value >> 8;
   buf[o + 1] = value & 0xff;
 }
@@ -210,16 +214,6 @@ export class Reassembler {
       o += p.length;
     }
     return out;
-  }
-
-  /** Drops all pending fragments whose key starts with `prefix`. */
-  dropPrefix(prefix) {
-    for (const [k, m] of this.#pending) {
-      if (k.startsWith(prefix)) {
-        this.#bytes -= m.size;
-        this.#pending.delete(k);
-      }
-    }
   }
 
   #expire(now) {

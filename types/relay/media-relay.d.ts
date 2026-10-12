@@ -34,7 +34,6 @@ export class MediaRelay {
     sendSubscription(origin: any): void;
     /** Re-sends all our subscriptions over `link` (after it opened). */
     resendSubscriptions(link: any): void;
-    subscriptionsChanged(origin: any): void;
     /**
      * Sources link `link` must carry: `[{key, info, track, active, params}]`.
      * @param {import("../link/direct-link.js").DirectLink} link
@@ -54,7 +53,6 @@ export class MediaRelay {
     receivedSource(link: any, info: any, track: any): void;
     receivedSourceGone(link: any, info: any): void;
     forwardedSourcesGone(linkId: any): void;
-    onMidMap(): void;
     onMetrics(link: any, m: any, stats: any): void;
     /** Origin side: a relay reported budgets for our publications. */
     onBwe(link: any, msg: any): void;
@@ -62,11 +60,11 @@ export class MediaRelay {
     tick(): void;
     /** Bitrate this peer forwards for others, in bps (sum of forwarding budgets). */
     relayedBps(): number;
+    /** Budget tables as plain objects, for `group.getStats()`. */
     budgetsSnapshot(): {
-        links: {};
-        relayed: {};
-        reported: {};
+        links: any;
+        relayed: any;
+        reported: any;
     };
-    close(): void;
     #private;
 }

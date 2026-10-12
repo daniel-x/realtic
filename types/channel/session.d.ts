@@ -146,7 +146,5 @@ export class Session extends Emitter {
     close(): void;
     #private;
 }
-export { isReliable };
 import { Emitter } from "../util/emitter.js";
 import { RealticChannel } from "./channel.js";
-import { isReliable } from "./reliability.js";

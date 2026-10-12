@@ -31,6 +31,23 @@ export class LivenessMonitor {
     this.#lastData = now();
   }
 
+  /**
+   * Monitor with the thresholds of a group config (doc §3.5).
+   * @param {Readonly<typeof import("../config.js").DEFAULTS>} config
+   * @param {() => number} now
+   * @param {(state: "ok"|"slow"|"stale", silenceMs: number) => void} onchange
+   */
+  static fromConfig(config, now, onchange) {
+    return new LivenessMonitor({
+      now,
+      slowMs: config.SLOW_CONNECTION_MS,
+      staleMs: config.STALE_CONNECTION_MS,
+      backgroundSlowMs: config.BACKGROUND_SLOW_MS,
+      backgroundStaleMs: config.BACKGROUND_STALE_MS,
+      onchange,
+    });
+  }
+
   /** Current verdict. */
   get state() {
     return this.#state;

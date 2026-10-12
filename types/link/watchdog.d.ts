@@ -15,6 +15,5 @@ export class Watchdog {
     /** Arms the watchdog unless it is already armed. */
     arm(): void;
     clear(): void;
-    get armed(): boolean;
     #private;
 }

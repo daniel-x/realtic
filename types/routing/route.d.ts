@@ -6,6 +6,8 @@
  * @property {number} lastEarlySwitch
  * @property {{route: object, until: number} | null} overlap make-before-break old route
  * @property {Map<string, number>} heard last envelope time per via (relay flows)
+ * @property {Map<string, number>} rejected time of the last rejection per relay
+ * @property {number} lastSwitch time of the last route switch
  * @property {boolean} ownerSaidDirect
  */
 /**
@@ -29,14 +31,13 @@ export class Routing {
     linkOpen(link: any): void;
     linkState(link: any, state: any, reason: any): void;
     onMetrics(link: any): void;
-    onMidMap(link: any, msg: any): void;
-    onDrain(): void;
     tick(): void;
     onCtl(link: any, msg: any): void;
     onPeerControl(peer: any, msg: any): void;
-    onSubscription(link: any, msg: any): void;
     /** Our own subscription for `origin` changed: tell the origin and the pair's relays. */
     subscriptionChanged(origin: any): void;
+    /** True when the pair with `peerId` has a relay flow through `via`. */
+    hasFlowVia(peerId: any, via: any): boolean;
     /** True when envelopes from `src` may arrive relayed through `via`. Records arrival time. */
     acceptsRelayed(src: any, via: any): boolean;
     forward(link: any, src: any, dst: any, bytes: any, e: any, key: any): void;
@@ -49,17 +50,6 @@ export class Routing {
     canAddTurn(peerId: any): boolean;
     /** Smallest message size along a route. */
     pathMessageSize(route: any): number;
-    /** True when the pair exchanges media (for capability-aware relay choice). */
-    pairMedia(peerId: any): boolean;
-    mediaPlan(link: any): {
-        key: string;
-        info: any;
-        track: any;
-        active: boolean;
-    }[];
-    receivedSource(link: any, info: any, track: any): void;
-    receivedSourceGone(link: any, info: any): void;
-    forwardedSourcesGone(linkId: any): void;
     /** Statistics for `group.getStats()`. */
     stats(): {
         selfId: any;
@@ -74,9 +64,9 @@ export class Routing {
         links: {};
         peers: {};
         budgets: {
-            links: {};
-            relayed: {};
-            reported: {};
+            links: any;
+            relayed: any;
+            reported: any;
         };
     };
     close(): void;
@@ -107,6 +97,14 @@ export type PairState = {
      * last envelope time per via (relay flows)
      */
     heard: Map<string, number>;
+    /**
+     * time of the last rejection per relay
+     */
+    rejected: Map<string, number>;
+    /**
+     * time of the last route switch
+     */
+    lastSwitch: number;
     ownerSaidDirect: boolean;
 };
 import { NeighborTables } from "./link-state.js";

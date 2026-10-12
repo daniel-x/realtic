@@ -210,29 +210,8 @@ export class Group extends Emitter {
     localIndex(link: DirectLink, peerId: string): any;
     /** Peer id for an index in the neighbor's table, or undefined. */
     remoteIndex(link: any, idx: any): any;
-    /** @internal */
-    extraRoutes(peer: any): any[];
-    /** @internal */
-    pathMessageSize(route: any): number;
-    /** @internal */
-    onE2ELiveness(peer: any, state: any, silence: any): void;
-    /** @internal */
-    onPeerControl(peer: any, msg: any): void;
     /** @internal link id whose received tracks of `origin` the stable stream should use */
     mediaSourceFor(origin: any): any;
-    /** @internal media plan of a link: the sources it must carry */
-    mediaPlan(link: any): {
-        key: string;
-        info: any;
-        track: any;
-        active: boolean;
-    }[];
-    /** @internal */
-    receivedSource(link: any, info: any, track: any): void;
-    /** @internal */
-    receivedSourceGone(link: any, info: any): void;
-    /** @internal */
-    forwardedSourcesGone(linkId: any): void;
     /** @internal re-plans media on all open links */
     mediaChanged(): void;
     /** True when this side wants `origin`'s track of `kind` and `tag`. */
@@ -285,9 +264,9 @@ export class Group extends Emitter {
         links: {};
         peers: {};
         budgets: {
-            links: {};
-            relayed: {};
-            reported: {};
+            links: any;
+            relayed: any;
+            reported: any;
         };
     };
     /** JSON-serializable bundle for problem reports (plan section 12.1). */

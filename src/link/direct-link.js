@@ -12,6 +12,7 @@ import { failureHint } from "../diag/hints.js";
 
 const SLOT_TIMEOUT_MS = 15000;
 const RESTART_REQUEST_GAP_MS = 2000;
+const VERDICT_REPEAT_MS = 1000;
 
 /**
  * One RTCPeerConnection generation: the connection, its transport channels and per-generation
@@ -75,7 +76,7 @@ export class DirectLink extends Emitter {
   #turnAdded = false;
   #closed = false;
   #lastDump = null;
-  #lastMediaBytes = new Map();
+  #lastCounters = new Map();
   #ctlRtt = undefined;
 
   /** Latest link metrics (plan section 7.1). */
@@ -106,14 +107,7 @@ export class DirectLink extends Emitter {
     this.l = ctx.log.scope("link", { peer: remoteId });
     this.#queue = new SerialQueue((error) => this.#noteError("signaling", error));
     const c = this.config;
-    this.#monitor = new LivenessMonitor({
-      now: () => this.clock.now(),
-      slowMs: c.SLOW_CONNECTION_MS,
-      staleMs: c.STALE_CONNECTION_MS,
-      backgroundSlowMs: c.BACKGROUND_SLOW_MS,
-      backgroundStaleMs: c.BACKGROUND_STALE_MS,
-      onchange: (state, silence) => this.#onLiveness(state, silence),
-    });
+    this.#monitor = LivenessMonitor.fromConfig(c, () => this.clock.now(), (state, silence) => this.#onLiveness(state, silence));
     this.#heartbeat = new Heartbeat(this.clock, c.HEARTBEAT_IDLE_MS, () => this.#conn?.hop.sendBeat());
     this.#watchdog = new Watchdog(this.clock, c.CHANNEL_OPEN_TIMEOUT_MS, () => this.#onWatchdog());
     this.#recovery = new RecoverySchedule({
@@ -440,8 +434,7 @@ export class DirectLink extends Emitter {
 
   #onLiveness(state, silence) {
     this.l.info(`liveness ${state}`, { silenceMs: Math.round(silence), background: this.#monitor.background });
-    this.#lastVerdictAt = this.clock.now();
-    this.#conn?.hop.sendCtl({ t: "liveness", state });
+    this.#sendVerdict(state);
     if (state === "stale") this.#startRecovery("stale: no data for " + Math.round(silence) + " ms");
     else this.#evaluate("liveness " + state);
   }
@@ -449,11 +442,28 @@ export class DirectLink extends Emitter {
   #check() {
     if (this.#closed || !this.#conn?.ctlOpen) return;
     this.#monitor.check();
-    if (this.#monitor.state !== "ok" && this.clock.now() - this.#lastVerdictAt >= 1000) {
-      this.#lastVerdictAt = this.clock.now();
-      this.#conn.hop.sendCtl({ t: "liveness", state: this.#monitor.state });
-    }
+    if (this.#monitor.state !== "ok" && this.clock.now() - this.#lastVerdictAt >= VERDICT_REPEAT_MS) this.#sendVerdict(this.#monitor.state);
     if (this.#monitor.dataSilence >= this.config.LIVENESS_CHECK_INTERVAL_MS && !this.#polling) this.#pollLiveness();
+  }
+
+  #sendVerdict(state) {
+    this.#lastVerdictAt = this.clock.now();
+    this.#conn?.hop.sendCtl({ t: "liveness", state });
+  }
+
+  /**
+   * Local arrival time of the last packet a stats object counts: from
+   * `lastPacketReceivedTimestamp`, or, where a browser lacks it, `fallback` when the `counter`
+   * grew since the previous poll.
+   */
+  #lastArrival(s, counter, key, now, fallback) {
+    if (typeof s.lastPacketReceivedTimestamp === "number" && typeof s.timestamp === "number") {
+      return now - Math.max(0, s.timestamp - s.lastPacketReceivedTimestamp);
+    }
+    if (typeof s[counter] !== "number") return undefined;
+    const prev = this.#lastCounters.get(key);
+    this.#lastCounters.set(key, s[counter]);
+    return prev !== undefined && s[counter] > prev ? fallback : undefined;
   }
 
   async #pollLiveness() {
@@ -465,25 +475,13 @@ export class DirectLink extends Emitter {
       const now = this.clock.now();
       for (const s of stats.values()) {
         if (s.type !== "inbound-rtp") continue;
-        if (typeof s.lastPacketReceivedTimestamp === "number" && typeof s.timestamp === "number") {
-          this.#monitor.noteMedia(now - Math.max(0, s.timestamp - s.lastPacketReceivedTimestamp));
-        } else if (typeof s.bytesReceived === "number") {
-          const prev = this.#lastMediaBytes.get(s.id);
-          this.#lastMediaBytes.set(s.id, s.bytesReceived);
-          if (prev !== undefined && s.bytesReceived > prev) this.#monitor.noteMedia(now - this.config.LIVENESS_CHECK_INTERVAL_MS);
-        }
+        const at = this.#lastArrival(s, "bytesReceived", s.id, now, now - this.config.LIVENESS_CHECK_INTERVAL_MS);
+        if (at !== undefined) this.#monitor.noteMedia(at);
       }
-      if (this.#monitor.background) {
-        const pair = selectedPair(stats);
-        if (pair) {
-          if (typeof pair.lastPacketReceivedTimestamp === "number" && typeof pair.timestamp === "number") {
-            this.#monitor.noteConsent(now - Math.max(0, pair.timestamp - pair.lastPacketReceivedTimestamp));
-          } else if (typeof pair.responsesReceived === "number") {
-            const prev = this.#lastMediaBytes.get("consent");
-            this.#lastMediaBytes.set("consent", pair.responsesReceived);
-            if (prev !== undefined && pair.responsesReceived > prev) this.#monitor.noteConsent(now);
-          }
-        }
+      const pair = this.#monitor.background ? selectedPair(stats) : undefined;
+      if (pair) {
+        const at = this.#lastArrival(pair, "responsesReceived", "consent", now, now);
+        if (at !== undefined) this.#monitor.noteConsent(at);
       }
       this.#monitor.check();
     } catch {
@@ -599,10 +597,7 @@ export class DirectLink extends Emitter {
     this.l.info(`recovery step ${step.kind}`, { attempt: step.attempt });
     const conn = this.#conn;
     if (step.kind === "restart") {
-      if (this.impolite) {
-        if (this.clock.now() - this.#lastRestartAt >= RESTART_REQUEST_GAP_MS) this.#iceRestartNow(conn, "recovery");
-      }
-      else this.#signal(conn, { t: "renegotiate", iceRestart: true, reason: "recovery" });
+      if (!this.impolite || this.clock.now() - this.#lastRestartAt >= RESTART_REQUEST_GAP_MS) this.#restartIce(conn, "recovery");
     } else if (step.kind === "rebuild") {
       this.#rebuild("recovery");
     } else if (step.kind === "turn") {
@@ -613,9 +608,14 @@ export class DirectLink extends Emitter {
       } catch (error) {
         this.l.warn("setConfiguration failed", { error: error.message });
       }
-      if (this.impolite) this.#iceRestartNow(conn, "turn fallback");
-      else this.#signal(conn, { t: "renegotiate", iceRestart: true, reason: "turn fallback" });
+      this.#restartIce(conn, "turn fallback");
     }
+  }
+
+  /** The impolite side restarts ICE, the polite side asks for it. */
+  #restartIce(conn, reason) {
+    if (this.impolite) this.#iceRestartNow(conn, reason);
+    else this.#signal(conn, { t: "renegotiate", iceRestart: true, reason });
   }
 
   #iceRestartNow(conn, reason) {
@@ -655,8 +655,7 @@ export class DirectLink extends Emitter {
   iceRestart(reason) {
     const conn = this.#conn;
     if (!conn || this.#closed) return;
-    if (this.impolite) this.#iceRestartNow(conn, reason);
-    else this.#signal(conn, { t: "renegotiate", iceRestart: true, reason });
+    this.#restartIce(conn, reason);
   }
 
   /**

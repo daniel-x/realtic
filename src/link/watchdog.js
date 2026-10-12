@@ -29,8 +29,4 @@ export class Watchdog {
     if (this.#timer !== null) this.clock.clearTimeout(this.#timer);
     this.#timer = null;
   }
-
-  get armed() {
-    return this.#timer !== null;
-  }
 }

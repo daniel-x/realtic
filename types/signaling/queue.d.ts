@@ -14,8 +14,6 @@ export class SerialQueue {
      * @returns {Promise<T | undefined>}
      */
     push<T>(task: () => T | Promise<T>): Promise<T | undefined>;
-    /** Resolves when all queued tasks are done. */
-    idle(): Promise<void>;
     #private;
 }
 /** Remembers recently seen message ids, bounded in size (doc §2.5). */

@@ -127,8 +127,6 @@ export class ChannelReceiver {
     flushAck(): void;
     /** Re-sends the current credit grant (after a route change a grant may have been lost). */
     regrant(): void;
-    /** True when no out-of-order messages are held. */
-    get settled(): boolean;
     close(): void;
     #private;
 }

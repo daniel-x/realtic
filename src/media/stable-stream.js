@@ -71,12 +71,11 @@ export class StableStreams {
   #end(key, e) {
     if (this.#entries.get(key) !== e || e.sources.size) return;
     if (e.graceTimer) this.clock.clearTimeout(e.graceTimer);
-    const { origin, pub } = e;
     const visible = e.pipe ? e.pipe.track : e.current;
     if (visible) e.stream.removeTrack(visible);
     e.pipe?.stop();
     this.#entries.delete(key);
-    if (e.announced) this.emit(origin, "trackended", { track: visible, stream: e.stream, tag: e.tag, kind: e.kind, origin, pub });
+    if (e.announced) this.emit(e.origin, "trackended", detail(e, { track: visible }));
   }
 
   /** Removes every source that came over `source`, keeping the streams for `graceMs`. */
@@ -115,9 +114,9 @@ export class StableStreams {
       e.pipe.setSource(track);
       if (!e.announced) {
         e.announced = true;
-        this.emit(e.origin, "track", { track: e.pipe.track, stream: e.stream, tag: e.tag, kind: e.kind, origin: e.origin, pub: e.pub });
+        this.emit(e.origin, "track", detail(e, { track: e.pipe.track }));
       } else {
-        this.emit(e.origin, "trackreplaced", { track: e.pipe.track, sourceTrack: track, oldTrack: e.pipe.track, stream: e.stream, tag: e.tag, kind: e.kind, origin: e.origin, pub: e.pub });
+        this.emit(e.origin, "trackreplaced", detail(e, { track: e.pipe.track, sourceTrack: track, oldTrack: e.pipe.track }));
       }
       return;
     }
@@ -126,9 +125,9 @@ export class StableStreams {
     if (old && typeof e.stream.dispatchEvent === "function") e.stream.dispatchEvent(new Event(TRACK_SWAPPED));
     if (!e.announced) {
       e.announced = true;
-      this.emit(e.origin, "track", { track, stream: e.stream, tag: e.tag, kind: e.kind, origin: e.origin, pub: e.pub });
+      this.emit(e.origin, "track", detail(e, { track }));
     } else if (old) {
-      this.emit(e.origin, "trackreplaced", { track, oldTrack: old, stream: e.stream, tag: e.tag, kind: e.kind, origin: e.origin, pub: e.pub });
+      this.emit(e.origin, "trackreplaced", detail(e, { track, oldTrack: old }));
     }
   }
 
@@ -136,4 +135,8 @@ export class StableStreams {
   list() {
     return [...this.#entries.values()].map((e) => ({ origin: e.origin, pub: e.pub, tag: e.tag, kind: e.kind, source: e.currentSource, sources: [...e.sources.keys()] }));
   }
+}
+
+function detail(e, tracks) {
+  return { ...tracks, stream: e.stream, tag: e.tag, kind: e.kind, origin: e.origin, pub: e.pub };
 }

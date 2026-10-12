@@ -105,13 +105,11 @@ export class ChannelSender {
       if (this.reliable && serial.lt(this.#creditLimit, (this.#sentBytes + msg.payload.length) >>> 0) && this.#unacked.size) break;
       const lifetime = this.#lifetimeOf(msg);
       if (lifetime !== undefined && lifetime <= 0) {
-        this.#queue.shift();
-        this.#queuedBytes -= msg.payload.length;
+        this.#dequeue();
         continue;
       }
       if (!this.transmit({ seq: msg.seq, payload: msg.payload, lifetime })) break;
-      this.#queue.shift();
-      this.#queuedBytes -= msg.payload.length;
+      this.#dequeue();
       if (this.reliable) {
         msg.sentAt = this.clock.now();
         msg.tries = 1;
@@ -122,6 +120,10 @@ export class ChannelSender {
       }
     }
     if (this.#queuedBytes < before) this.onDrain?.();
+  }
+
+  #dequeue() {
+    this.#queuedBytes -= this.#queue.shift().payload.length;
   }
 
   #lifetimeOf(msg) {
@@ -326,11 +328,6 @@ export class ChannelReceiver {
   /** Re-sends the current credit grant (after a route change a grant may have been lost). */
   regrant() {
     if (this.reliable) this.sendCredit(this.#granted);
-  }
-
-  /** True when no out-of-order messages are held. */
-  get settled() {
-    return this.#held.size === 0;
   }
 
   close() {

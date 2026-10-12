@@ -1,4 +1,4 @@
-import { ChannelSender, ChannelReceiver, isReliable } from "./reliability.js";
+import { ChannelSender, ChannelReceiver } from "./reliability.js";
 import { RealticChannel } from "./channel.js";
 import { TYPE } from "../transport/framing.js";
 import { modeKey, REL, UNREL } from "../transport/hop-channels.js";
@@ -263,5 +263,3 @@ function u32(n) {
 function readU32(b) {
   return new DataView(b.buffer, b.byteOffset, b.byteLength).getUint32(0);
 }
-
-export { isReliable };

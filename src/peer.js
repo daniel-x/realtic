@@ -25,7 +25,6 @@ export class Peer extends Emitter {
   #encChain = Promise.resolve();
   #decChain = Promise.resolve();
   #e2eMonitor;
-  #remoteBackground = false;
   #logRequests = new Map();
   #logParts = new Map();
   #beatTimer = null;
@@ -58,15 +57,7 @@ export class Peer extends Emitter {
     });
     this.session.on("channel", (ch) => this.emit("channel", ch));
     this.session.on("control", (msg) => this.#onControl(msg));
-    const c = group.config;
-    this.#e2eMonitor = new LivenessMonitor({
-      now: () => group.clock.now(),
-      slowMs: c.SLOW_CONNECTION_MS,
-      staleMs: c.STALE_CONNECTION_MS,
-      backgroundSlowMs: c.BACKGROUND_SLOW_MS,
-      backgroundStaleMs: c.BACKGROUND_STALE_MS,
-      onchange: (state, silence) => group.onE2ELiveness(this, state, silence),
-    });
+    this.#e2eMonitor = LivenessMonitor.fromConfig(group.config, () => group.clock.now(), (state, silence) => group.routing.onE2ELiveness(this, state, silence));
   }
 
   /** `connecting` | `connected` | `slow` | `reconnecting` | `unreachable` | `closed` */
@@ -166,17 +157,15 @@ export class Peer extends Emitter {
         return;
       }
       case "bg":
-        this.#remoteBackground = true;
         this.#e2eMonitor.setBackground(true);
         this.l.info("remote entered background mode (end to end)");
         return;
       case "fg":
-        this.#remoteBackground = false;
         this.#e2eMonitor.setBackground(false);
         this.l.info("remote left background mode (end to end)");
         return;
       default:
-        this.#group.onPeerControl(this, msg);
+        this.#group.routing.onPeerControl(this, msg);
     }
   }
 
@@ -188,11 +177,6 @@ export class Peer extends Emitter {
     this.#group.clock.clearTimeout(req.timer);
     if (error) req.reject(error);
     else req.resolve(report);
-  }
-
-  /** True while the remote announced background mode end to end. */
-  get remoteBackground() {
-    return this.#remoteBackground;
   }
 
   // Routing ------------------------------------------------------------------------------------
@@ -251,7 +235,7 @@ export class Peer extends Emitter {
     const route = this.#route;
     const reliable = key === "rel";
     if (!route) return !reliable;
-    const extra = this.#group.extraRoutes(this);
+    const extra = this.#group.routing.extraRoutes(this);
     const ok = this.#sendOn(route, e, key);
     for (const r of extra) this.#sendOn(r, e, key);
     return ok || !reliable;
@@ -267,7 +251,7 @@ export class Peer extends Emitter {
     const dstIdx = route.kind === "direct" ? 1 : this.#group.localIndex(link, this.id);
     const flags = encrypted ? FLAG.ENCRYPTED : 0;
     const lifetimeFlag = e.lifetime !== undefined ? FLAG.LIFETIME : 0;
-    const mtu = Math.min(link.maxMessageSize, this.#group.config.maxFragmentBytes, this.#group.pathMessageSize(route));
+    const mtu = Math.min(link.maxMessageSize, this.#group.config.maxFragmentBytes, this.#group.routing.pathMessageSize(route));
     const room = mtu - headerLength(FLAG.FRAGMENTED | lifetimeFlag) - (encrypted ? OVERHEAD : 0);
     const parts = split(e.payload, Math.max(256, room));
     const total = e.payload.length + parts.length * 64;

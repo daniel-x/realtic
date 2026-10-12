@@ -7,6 +7,13 @@
  */
 export class LivenessMonitor {
     /**
+     * Monitor with the thresholds of a group config (doc §3.5).
+     * @param {Readonly<typeof import("../config.js").DEFAULTS>} config
+     * @param {() => number} now
+     * @param {(state: "ok"|"slow"|"stale", silenceMs: number) => void} onchange
+     */
+    static fromConfig(config: Readonly<typeof import("../config.js").DEFAULTS>, now: () => number, onchange: (state: "ok" | "slow" | "stale", silenceMs: number) => void): LivenessMonitor;
+    /**
      * @param {object} options
      * @param {() => number} options.now
      * @param {number} options.slowMs

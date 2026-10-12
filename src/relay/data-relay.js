@@ -1,5 +1,15 @@
 import { rewriteIdx, rewriteLifetime, FLAG } from "../transport/framing.js";
 
+/** True when relay flow `f` runs between peers `a` and `b`, in either direction. */
+export function connects(f, a, b) {
+  return (f.origin === a && f.target === b) || (f.origin === b && f.target === a);
+}
+
+/** The end of relay flow `f` that is not `id`, or null when `id` is neither end. */
+function otherEnd(f, id) {
+  return f.origin === id ? f.target : f.target === id ? f.origin : null;
+}
+
 /**
  * Relay side of peer relaying (plan section 7.2, 9.3, decision D21): accepts or rejects relay
  * requests, forwards envelopes of accepted flows between its two neighbors, rewrites the index
@@ -44,9 +54,7 @@ export class DataRelay {
 
   /** True when a flow between a and b (either direction) is accepted. */
   carries(a, b) {
-    for (const f of this.flows.values()) {
-      if ((f.origin === a && f.target === b) || (f.origin === b && f.target === a)) return true;
-    }
+    for (const f of this.flows.values()) if (connects(f, a, b)) return true;
     return false;
   }
 
@@ -108,7 +116,7 @@ export class DataRelay {
     for (const [key, f] of this.flows) {
       if (f.flow !== msg.flow || (f.origin !== link.remoteId && f.target !== link.remoteId)) continue;
       this.flows.delete(key);
-      const other = f.origin === link.remoteId ? f.target : f.origin;
+      const other = otherEnd(f, link.remoteId);
       this.#group.links.get(other)?.sendCtl({ t: "relay-close", flow: f.flow, origin: f.origin });
       this.l.info("relay flow closed", { flow: f.flow, origin: f.origin, target: f.target, by: link.remoteId });
       this.#group.mediaChanged();
@@ -179,7 +187,7 @@ export class DataRelay {
     const t = verdict === "stale" ? "route-down" : "route-slow";
     const told = new Set();
     for (const f of this.flows.values()) {
-      const other = f.origin === peerId ? f.target : f.target === peerId ? f.origin : null;
+      const other = otherEnd(f, peerId);
       if (!other || told.has(other)) continue;
       told.add(other);
       g.links.get(other)?.sendCtl({ t, origin: peerId, target: other });
@@ -192,7 +200,7 @@ export class DataRelay {
     for (const [key, f] of this.flows) {
       if (f.origin !== peerId && f.target !== peerId) continue;
       this.flows.delete(key);
-      const other = f.origin === peerId ? f.target : f.origin;
+      const other = otherEnd(f, peerId);
       this.#group.links.get(other)?.sendCtl({ t: "route-down", origin: peerId, target: other });
       this.#group.links.get(other)?.sendCtl({ t: "relay-close", flow: f.flow, origin: f.origin });
     }

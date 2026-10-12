@@ -18,6 +18,7 @@ import { Routing } from "./routing/route.js";
 import { createSignaling } from "./signaling/create.js";
 
 const HELLO_RETRY_MS = 3000;
+const isTurnServer = (s) => [].concat(s.urls).some((u) => /^turns?:/i.test(u));
 const HELD_SIGNAL_LIMIT = 64;
 const MESH_ONLY_REJECT = new Set(["hello", "offer", "answer"]);
 
@@ -123,9 +124,8 @@ export class Group extends Emitter {
   /** RTCConfiguration for a link (plan section 11). */
   rtcConfig(withTurn) {
     const mode = this.config.turnMode;
-    const isTurn = (s) => [].concat(s.urls).some((u) => /^turns?:/i.test(u));
     let servers = this.iceServers;
-    if (mode === "fallback" && !withTurn) servers = servers.filter((s) => !isTurn(s));
+    if (mode === "fallback" && !withTurn) servers = servers.filter((s) => !isTurnServer(s));
     const cfg = { iceServers: servers, bundlePolicy: "max-bundle" };
     if (mode === "relay-only") cfg.iceTransportPolicy = "relay";
     return cfg;
@@ -133,7 +133,7 @@ export class Group extends Emitter {
 
   /** True when TURN servers are configured. */
   get hasTurn() {
-    return this.iceServers.some((s) => [].concat(s.urls).some((u) => /^turns?:/i.test(u)));
+    return this.iceServers.some(isTurnServer);
   }
 
   // Membership ----------------------------------------------------------------------------------
@@ -179,8 +179,7 @@ export class Group extends Emitter {
     this.#helloDone.delete(peerId);
     this.#pendingHellos.delete(peerId);
     this.#heldSignals.delete(peerId);
-    this.clock.clearInterval(this.#helloTimers.get(peerId));
-    this.#helloTimers.delete(peerId);
+    this.#stopHelloRetry(peerId);
     this.routing.peerGone(peerId);
     const link = this.links.get(peerId);
     if (link) {
@@ -224,14 +223,15 @@ export class Group extends Emitter {
     this.router.send(peerId, this.#helloMessage(ack, peerId), { serverOnly: true });
     if (ack || this.#helloTimers.has(peerId)) return;
     const timer = this.clock.setInterval(() => {
-      if (this.#helloDone.has(peerId) || !this.peers.has(peerId)) {
-        this.clock.clearInterval(timer);
-        this.#helloTimers.delete(peerId);
-        return;
-      }
+      if (this.#helloDone.has(peerId) || !this.peers.has(peerId)) return this.#stopHelloRetry(peerId);
       this.router.send(peerId, this.#helloMessage(false, peerId), { serverOnly: true });
     }, HELLO_RETRY_MS);
     this.#helloTimers.set(peerId, timer);
+  }
+
+  #stopHelloRetry(peerId) {
+    this.clock.clearInterval(this.#helloTimers.get(peerId));
+    this.#helloTimers.delete(peerId);
   }
 
   async #onHello(from, msg) {
@@ -246,8 +246,7 @@ export class Group extends Emitter {
     if (!msg.ack) this.#sendHello(from, true);
     const first = !this.#helloDone.has(from);
     this.#helloDone.add(from);
-    this.clock.clearInterval(this.#helloTimers.get(from));
-    this.#helloTimers.delete(from);
+    this.#stopHelloRetry(from);
     if (msg.proto?.major !== this.protocol.major) {
       peer.lastError = `protocol major ${msg.proto?.major} differs from ${this.protocol.major}`;
       peer.hint = "protocol-mismatch";
@@ -277,7 +276,7 @@ export class Group extends Emitter {
     link.onListenerError = this.onListenerError;
     this.links.set(peerId, link);
     this.#indexTables.set(peerId, newIndexTable(this.selfId, peerId));
-    link.on("state", (state, reason) => this.#onLinkState(link, state, reason));
+    link.on("state", (state, reason) => this.routing.linkState(link, state, reason));
     link.on("ctl", (msg) => this.#onLinkCtl(link, msg));
     link.on("envelope", (bytes, key) => this.#onEnvelope(link, bytes, key));
     link.on("open", () => this.#onLinkOpen(link));
@@ -361,10 +360,6 @@ export class Group extends Emitter {
     this.media.sync(link);
   }
 
-  #onLinkState(link, state, reason) {
-    this.routing.linkState(link, state, reason);
-  }
-
   #onLinkCtl(link, msg) {
     switch (msg.t) {
       case "sig":
@@ -384,10 +379,9 @@ export class Group extends Emitter {
       }
       case "mid-map":
         this.media.onMidMap(link, msg);
-        this.routing.onMidMap(link, msg);
         return;
       case "subscription":
-        this.routing.onSubscription(link, msg);
+        this.routing.mediaRelay.onSubscription(link, msg);
         return;
       default:
         this.routing.onCtl(link, msg);
@@ -447,56 +441,15 @@ export class Group extends Emitter {
       const r = peer.routeInfo;
       if (r && (r.kind === "direct" ? peer.id : r.via) === link.remoteId) peer.pump();
     }
-    this.routing.onDrain(link);
   }
 
   // Hooks for peers, routing and media ------------------------------------------------------------
-
-  /** @internal */
-  extraRoutes(peer) {
-    return this.routing.extraRoutes(peer);
-  }
-
-  /** @internal */
-  pathMessageSize(route) {
-    return this.routing.pathMessageSize(route);
-  }
-
-  /** @internal */
-  onE2ELiveness(peer, state, silence) {
-    this.routing.onE2ELiveness(peer, state, silence);
-  }
-
-  /** @internal */
-  onPeerControl(peer, msg) {
-    this.routing.onPeerControl(peer, msg);
-  }
 
   /** @internal link id whose received tracks of `origin` the stable stream should use */
   mediaSourceFor(origin) {
     const r = this.peers.get(origin)?.routeInfo;
     if (!r) return origin;
     return r.kind === "direct" ? origin : r.via;
-  }
-
-  /** @internal media plan of a link: the sources it must carry */
-  mediaPlan(link) {
-    return this.routing.mediaPlan(link);
-  }
-
-  /** @internal */
-  receivedSource(link, info, track) {
-    this.routing.receivedSource(link, info, track);
-  }
-
-  /** @internal */
-  receivedSourceGone(link, info) {
-    this.routing.receivedSourceGone(link, info);
-  }
-
-  /** @internal */
-  forwardedSourcesGone(linkId) {
-    this.routing.forwardedSourcesGone(linkId);
   }
 
   /** @internal re-plans media on all open links */

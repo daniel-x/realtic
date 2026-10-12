@@ -1,5 +1,6 @@
 import { wants } from "../media/subscriptions.js";
 import { linkBudgets, relayBudget, scaleFor, BudgetReporter } from "../media/bwe.js";
+import { connects } from "./data-relay.js";
 
 const BUDGET_CHANGE = 0.1;
 const CPU_BUDGET_FACTOR = 0.7;
@@ -58,12 +59,13 @@ export class MediaRelay {
    * @param {{origin: string, for?: string, audio: boolean, video: boolean, tags: string[]|null}} msg
    */
   onSubscription(link, msg) {
+    if (typeof msg.origin !== "string") return;
     const g = this.#group;
     const subscriber = typeof msg.for === "string" ? msg.for : link.remoteId;
     if (subscriber !== link.remoteId) {
       const ok =
         msg.origin === g.selfId
-          ? [...(this.#routing.pairs.get(subscriber)?.flows.values() ?? [])].some((f) => f.via === link.remoteId)
+          ? this.#routing.hasFlowVia(subscriber, link.remoteId)
           : this.#routing.relay.carries(subscriber, msg.origin);
       if (!ok) return;
     }
@@ -99,13 +101,8 @@ export class MediaRelay {
     for (const origin of g.peers.keys()) {
       const sub = g.subscription(origin);
       if (!sub) continue;
-      const viaFlow = [...(this.#routing.pairs.get(origin)?.flows.values() ?? [])].some((f) => f.via === link.remoteId);
-      if (origin === link.remoteId || viaFlow) link.sendCtl({ t: "subscription", origin, for: g.selfId, ...sub });
+      if (origin === link.remoteId || this.#routing.hasFlowVia(origin, link.remoteId)) link.sendCtl({ t: "subscription", origin, for: g.selfId, ...sub });
     }
-  }
-
-  subscriptionsChanged(origin) {
-    this.sendSubscription(origin);
   }
 
   // Plan ----------------------------------------------------------------------------------------
@@ -145,8 +142,7 @@ export class MediaRelay {
       let carried = false;
       let active = false;
       for (const f of this.#routing.relay.flows.values()) {
-        const between = (f.origin === origin && f.target === neighbor) || (f.origin === neighbor && f.target === origin);
-        if (!between) continue;
+        if (!connects(f, origin, neighbor)) continue;
         carried = true;
         if (f.role === "active" && wants(this.subscription(neighbor, origin), src.info.kind, src.info.tag)) active = true;
       }
@@ -215,8 +211,6 @@ export class MediaRelay {
     if (changed) this.#group.mediaChanged();
   }
 
-  onMidMap() {}
-
   // Bandwidth -----------------------------------------------------------------------------------
 
   /**
@@ -259,7 +253,7 @@ export class MediaRelay {
       else this.#budgets.delete(link.remoteId);
       this.l.debug("link budgets", { peer: link.remoteId, capacity: capacity && Math.round(capacity), budgets: next && Object.fromEntries(next) });
     }
-    const relayChanged = this.#updateRelayBudgets(m);
+    const relayChanged = this.#updateRelayBudgets();
     if (changed || relayChanged) g.mediaChanged();
   }
 
@@ -331,15 +325,9 @@ export class MediaRelay {
     return sum;
   }
 
+  /** Budget tables as plain objects, for `group.getStats()`. */
   budgetsSnapshot() {
-    const out = {};
-    for (const [id, b] of this.#budgets) out[id] = Object.fromEntries(b);
-    const relayed = {};
-    for (const [id, b] of this.#relayBudgets) relayed[id] = Object.fromEntries(b);
-    const reported = {};
-    for (const [id, b] of this.#reported) reported[id] = Object.fromEntries(b);
-    return { links: out, relayed, reported };
+    const plain = (tables) => Object.fromEntries([...tables].map(([id, b]) => [id, Object.fromEntries(b)]));
+    return { links: plain(this.#budgets), relayed: plain(this.#relayBudgets), reported: plain(this.#reported) };
   }
-
-  close() {}
 }

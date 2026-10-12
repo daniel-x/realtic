@@ -6,6 +6,10 @@ import { randomId } from "../util/ids.js";
 
 const NEIGHBOR_TABLE_MAX_AGE_MS = 10000;
 const FLOW_REQUEST_TIMEOUT_MS = 5000;
+const REJECT_HOLD_MS = 10000;
+
+const relayRoute = (f) => ({ kind: "relay", via: f.via, flow: f.flow });
+const linkLiveness = (link) => (link.usable ? (link.healthy ? "ok" : "slow") : "down");
 
 /**
  * Pair route state, on both ends of a pair.
@@ -15,6 +19,8 @@ const FLOW_REQUEST_TIMEOUT_MS = 5000;
  * @property {number} lastEarlySwitch
  * @property {{route: object, until: number} | null} overlap make-before-break old route
  * @property {Map<string, number>} heard last envelope time per via (relay flows)
+ * @property {Map<string, number>} rejected time of the last rejection per relay
+ * @property {number} lastSwitch time of the last route switch
  * @property {boolean} ownerSaidDirect
  */
 
@@ -55,6 +61,8 @@ export class Routing {
         lastEarlySwitch: -Infinity,
         overlap: null,
         heard: new Map(),
+        rejected: new Map(),
+        lastSwitch: -Infinity,
         ownerSaidDirect: true,
       };
       this.pairs.set(peerId, p);
@@ -113,12 +121,6 @@ export class Routing {
     this.#computeLoad();
     this.mediaRelay.onMetrics(link);
   }
-
-  onMidMap(link, msg) {
-    this.mediaRelay.onMidMap(link, msg);
-  }
-
-  onDrain() {}
 
   tick() {
     const now = this.#group.clock.now();
@@ -200,11 +202,6 @@ export class Routing {
     if (msg.t === "media") this.mediaRelay.onRemoteKinds(peer.id, msg.kinds);
   }
 
-  onSubscription(link, msg) {
-    if (typeof msg.origin !== "string") return;
-    this.mediaRelay.onSubscription(link, msg);
-  }
-
   /** Our own subscription for `origin` changed: tell the origin and the pair's relays. */
   subscriptionChanged(origin) {
     this.mediaRelay.sendSubscription(origin);
@@ -215,7 +212,8 @@ export class Routing {
 
   #requestFlow(peerId, via, role) {
     const p = this.#pair(peerId);
-    for (const f of p.flows.values()) if (f.via === via) return f;
+    const existing = this.#flowVia(p, via);
+    if (existing) return existing;
     const link = this.#group.links.get(via);
     if (!link?.usable) return null;
     const flow = { flow: randomId(8), via, role, state: "requested", since: this.#group.clock.now(), owner: true };
@@ -233,6 +231,17 @@ export class Routing {
     this.#group.links.get(flow.via)?.sendCtl({ t: "relay-close", flow: flow.flow, origin: this.#group.selfId });
     this.l.info("relay flow closed", { peer: peerId, via: flow.via, flow: flow.flow, reason });
     this.#group.mediaChanged();
+  }
+
+  #flowVia(p, via) {
+    for (const f of p.flows.values()) if (f.via === via) return f;
+    return undefined;
+  }
+
+  /** True when the pair with `peerId` has a relay flow through `via`. */
+  hasFlowVia(peerId, via) {
+    const p = this.pairs.get(peerId);
+    return !!p && !!this.#flowVia(p, via);
   }
 
   #findFlow(flowId) {
@@ -258,7 +267,6 @@ export class Routing {
     const [peerId, p, f] = this.#findFlow(msg.flow);
     if (!f || f.via !== link.remoteId) return;
     p.flows.delete(f.flow);
-    p.rejected = p.rejected ?? new Map();
     p.rejected.set(f.via, this.#group.clock.now());
     this.l.info("relay rejected", { peer: peerId, via: f.via, reason: msg.reason });
     this.#update(peerId, "relay rejected");
@@ -283,7 +291,7 @@ export class Routing {
     if (f.role === "active") {
       for (const other of p.flows.values()) if (other !== f && other.role === "active") other.role = "standby";
       p.ownerSaidDirect = false;
-      this.#use(origin, { kind: "relay", via: f.via, flow: f.flow }, "owner chose relay");
+      this.#use(origin, relayRoute(f), "owner chose relay");
     }
     this.#group.mediaChanged();
     this.#update(origin, "relay open");
@@ -305,7 +313,7 @@ export class Routing {
     f.role = "active";
     p.ownerSaidDirect = false;
     this.l.info("standby activated by owner", { peer: peerId, via: f.via });
-    this.#use(peerId, { kind: "relay", via: f.via, flow: f.flow }, "standby activated");
+    this.#use(peerId, relayRoute(f), "standby activated");
     this.#group.mediaChanged();
   }
 
@@ -377,7 +385,7 @@ export class Routing {
       const active = peer.routeInfo;
       for (const f of p.flows.values()) {
         if (f.state !== "open" || (active?.kind === "relay" && active.flow === f.flow)) continue;
-        peer.beatOn({ kind: "relay", via: f.via, flow: f.flow });
+        peer.beatOn(relayRoute(f));
       }
     }
   }
@@ -444,7 +452,7 @@ export class Routing {
       g.links.get(flow.via)?.sendCtl({ t: "standby-activate", flow: flow.flow, origin: g.selfId });
       p.selector.force({ kind: "relay", via: flow.via, cls: 1, cost: 0 });
     }
-    this.#use(peerId, { kind: "relay", via: flow.via, flow: flow.flow }, reason, false);
+    this.#use(peerId, relayRoute(flow), reason, false);
     g.mediaChanged();
   }
 
@@ -457,7 +465,7 @@ export class Routing {
   #candidates(peerId) {
     const g = this.#group;
     const link = g.links.get(peerId);
-    const direct = link ? { ...link.metrics, state: link.usable ? (link.healthy ? "ok" : "slow") : "down", candidateType: link.viaTurn ? "relay" : link.metrics.candidateType } : undefined;
+    const direct = link ? { ...link.metrics, state: linkLiveness(link), candidateType: link.viaTurn ? "relay" : link.metrics.candidateType } : undefined;
     const neighbors = new Map();
     const now = g.clock.now();
     const p = this.pairs.get(peerId);
@@ -466,9 +474,9 @@ export class Routing {
       const vlink = g.links.get(via);
       const t = this.neighbors.get(via);
       if (!vlink || !t) continue;
-      if (p?.rejected?.has(via) && now - p.rejected.get(via) < 10000) continue;
+      if (p?.rejected.has(via) && now - p.rejected.get(via) < REJECT_HOLD_MS) continue;
       neighbors.set(via, {
-        link: { ...vlink.metrics, state: vlink.usable ? (vlink.healthy ? "ok" : "slow") : "down" },
+        link: { ...vlink.metrics, state: linkLiveness(vlink) },
         table: t.table,
         load: t.load,
         relay: t.relay,
@@ -527,7 +535,7 @@ export class Routing {
       }
     }
     let { route: best } = p.selector.decide(list);
-    const sinceSwitch = this.#group.clock.now() - (p.lastSwitch ?? -Infinity);
+    const sinceSwitch = g.clock.now() - p.lastSwitch;
     if (best && current?.kind === "relay" && best.kind === "relay" && best.via !== current.via && sinceSwitch < g.config.earlySwitchIntervalMs) {
       const cur = list.find((c) => c.kind === "relay" && c.via === current.via);
       if (cur) {
@@ -549,7 +557,7 @@ export class Routing {
       this.#tidyFlows(peerId, p, best, list);
       return;
     }
-    let flow = [...p.flows.values()].find((f) => f.via === best.via);
+    let flow = this.#flowVia(p, best.via);
     if (!flow) flow = this.#requestFlow(peerId, best.via, "active");
     if (!flow || flow.state !== "open" || flow.down) {
       this.#tidyFlows(peerId, p, best, list);
@@ -557,7 +565,7 @@ export class Routing {
     }
     if (current?.kind !== "relay" || current.flow !== flow.flow) {
       if (flow.role !== "active") this.#activate(peerId, flow, `planner: ${reason}`);
-      else this.#use(peerId, { kind: "relay", via: flow.via, flow: flow.flow }, `planner: ${reason}`);
+      else this.#use(peerId, relayRoute(flow), `planner: ${reason}`);
     }
     this.#tidyFlows(peerId, p, best, list);
   }
@@ -582,7 +590,7 @@ export class Routing {
       const isStandby = standby && f.via === standby.via;
       if (!isActive && !isBest && !isStandby && f.state === "open") this.#closeFlow(peerId, f, "not needed");
     }
-    if (standby && active?.kind === "relay" && ![...p.flows.values()].some((f) => f.via === standby.via)) {
+    if (standby && active?.kind === "relay" && !this.#flowVia(p, standby.via)) {
       this.#requestFlow(peerId, standby.via, "standby");
     }
   }
@@ -596,7 +604,7 @@ export class Routing {
       const f = p.flows.get(current.flow);
       if (f && !f.down && g.links.get(f.via)?.usable) return;
       const standby = this.#standbyOf(peerId);
-      if (standby) return this.#use(peerId, { kind: "relay", via: standby.via, flow: standby.flow }, "active relay down (follower)");
+      if (standby) return this.#use(peerId, relayRoute(standby), "active relay down (follower)");
       if (link?.usable) return this.#use(peerId, { kind: "direct" }, "relay down, direct usable");
       peer.setRoute(null, "relay down");
       return;
@@ -604,7 +612,7 @@ export class Routing {
     if (current?.kind === "direct" && link?.usable) {
       if (!p.ownerSaidDirect) {
         const active = [...p.flows.values()].find((f) => f.role === "active" && f.state === "open" && !f.down);
-        if (active) this.#use(peerId, { kind: "relay", via: active.via, flow: active.flow }, "owner uses relay");
+        if (active) this.#use(peerId, relayRoute(active), "owner uses relay");
       }
       return;
     }
@@ -612,7 +620,7 @@ export class Routing {
       return this.#use(peerId, { kind: "direct" }, "direct usable");
     }
     const f = [...p.flows.values()].find((x) => x.role === "active" && x.state === "open" && !x.down && g.links.get(x.via)?.usable) ?? this.#standbyOf(peerId);
-    if (f) return this.#use(peerId, { kind: "relay", via: f.via, flow: f.flow }, "relay available (follower)");
+    if (f) return this.#use(peerId, relayRoute(f), "relay available (follower)");
     if (current) peer.setRoute(null, "no route");
   }
 
@@ -622,8 +630,9 @@ export class Routing {
     const p = this.pairs.get(peerId);
     const prev = peer.routeInfo;
     if (prev && routeKey(prev) === routeKey(route) && prev.flow === route.flow) return;
-    if (overlap && prev && this.#routeUsable(prev)) {
-      const rtt = this.#routeRtt(prev);
+    const prevHop = prev?.kind === "relay" ? g.links.get(prev.via) : undefined;
+    if (overlap && prevHop?.usable) {
+      const rtt = (prevHop.metrics.rtt ?? 0) * 2;
       p.overlap = { route: prev, until: g.clock.now() + Math.max(g.config.switchOverlapMinMs, rtt) };
     } else {
       p.overlap = null;
@@ -633,17 +642,6 @@ export class Routing {
     g.media.streams.reselect(peerId);
     g.mediaChanged();
     this.#refreshState(peer, p);
-  }
-
-  #routeUsable(r) {
-    const via = r.kind === "direct" ? null : r.via;
-    return via ? !!this.#group.links.get(via)?.usable : false;
-  }
-
-  #routeRtt(r) {
-    const g = this.#group;
-    if (r.kind === "direct") return g.links.get(r.via ?? "")?.metrics.rtt ?? 0;
-    return (g.links.get(r.via)?.metrics.rtt ?? 0) * 2;
   }
 
   /** Make-before-break: routes that carry traffic in addition to the active one. */
@@ -713,27 +711,6 @@ export class Routing {
     return Math.min(hop1, hop2);
   }
 
-  /** True when the pair exchanges media (for capability-aware relay choice). */
-  pairMedia(peerId) {
-    return this.mediaRelay.pairHasMedia(peerId);
-  }
-
-  mediaPlan(link) {
-    return this.mediaRelay.plan(link);
-  }
-
-  receivedSource(link, info, track) {
-    this.mediaRelay.receivedSource(link, info, track);
-  }
-
-  receivedSourceGone(link, info) {
-    this.mediaRelay.receivedSourceGone(link, info);
-  }
-
-  forwardedSourcesGone(linkId) {
-    this.mediaRelay.forwardedSourcesGone(linkId);
-  }
-
   /** Statistics for `group.getStats()`. */
   stats() {
     const g = this.#group;
@@ -756,6 +733,5 @@ export class Routing {
   close() {
     this.#group.clock.clearInterval(this.#beatTimer);
     this.relay.close();
-    this.mediaRelay.close();
   }
 }
