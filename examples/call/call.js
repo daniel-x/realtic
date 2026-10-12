@@ -1,14 +1,14 @@
-// Mesh call demo: every page in the same room calls every other. Open
-// http://localhost:8080/examples/call/?room=test in several tabs or devices (add &server=node
+// Mesh call demo: every page in the same group calls every other. Open
+// http://localhost:8080/examples/call/?group=test in several tabs or devices (add &server=node
 // for the Node server).
 import { Group, HINT_TEXT, attachMedia } from "../../src/index.js";
 import { demoSignaling } from "../signaling.js";
 
 const params = new URLSearchParams(location.search);
-const room = params.get("room") ?? "demo";
+const groupName = params.get("group") ?? "demo";
 const selfId = crypto.randomUUID().slice(0, 8);
-const group = new Group({ selfId, signaling: demoSignaling(room), autoPeers: true, iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-document.getElementById("me").textContent = `you: ${selfId}, room: ${room}`;
+const group = new Group({ selfId, signaling: demoSignaling(groupName), autoPeers: true, iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+document.getElementById("me").textContent = `you: ${selfId}, group: ${groupName}`;
 
 const tiles = document.getElementById("tiles");
 const tileFor = new Map();

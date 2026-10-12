@@ -8,7 +8,7 @@ for (const kind of ["php", "node"]) {
   const s = kind === "php" ? await createPhpServer() : await createSignalingServer({});
   const base = `http://localhost:${s.port}`;
   for (const demo of ["call", "chat"]) {
-    const query = `?room=smoke-${demo}${kind === "node" ? "&server=node" : ""}`;
+    const query = `?group=smoke-${demo}${kind === "node" ? "&server=node" : ""}`;
     const a = await openPage("chromium", `${base}/examples/${demo}/${query}`);
     const b = await openPage("firefox", `${base}/examples/${demo}/${query}`);
     await new Promise((r) => setTimeout(r, 6000));

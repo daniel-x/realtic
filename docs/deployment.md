@@ -11,8 +11,8 @@ realtic talks to a signaling server through an adapter (`{ send, onmessage, onpr
 `Group` takes either an adapter or the settings of a reference server:
 
 ```js
-new Group({ signaling: { url: "https://example.com/realtic/signal.php", room } }); // PHP server
-new Group({ signaling: { url: "wss://example.com/signal", room } });               // Node server
+new Group({ signaling: { url: "https://example.com/realtic/signal.php", group: "demo" } }); // PHP server
+new Group({ signaling: { url: "wss://example.com/signal", group: "demo" } });               // Node server
 ```
 
 A signaling outage does not end live connections: they keep running and renegotiate over the
@@ -30,16 +30,16 @@ Requirements: PHP 8.0 or newer with `pdo_sqlite` (SQLite 3.24 or newer), which m
 
 Each client sends one POST per poll: every `poll_fast_ms` (250) for 5 s after a message, every
 `poll_idle_ms` (3000) otherwise. The server sends both values to the clients. After the mesh is
-up most signaling runs over the peers, so a connected room costs one request per client every
+up most signaling runs over the peers, so a connected group costs one request per client every
 3 s. Every request is short, so the server needs no long-lived connections. Other settings:
 
 | Key | Default | Meaning |
 | --- | ------- | ------- |
 | `db` | `data/realtic.sqlite` | SQLite file |
 | `journal_mode` | `WAL` | use `DELETE` on network file systems, where WAL does not work |
-| `member_timeout_s` | 30 | a client that stops polling leaves the room after this |
+| `member_timeout_s` | 30 | a client that stops polling leaves the group after this |
 | `message_ttl_s` | 30 | undelivered messages expire |
-| `max_room_members` | 64 | |
+| `max_group_members` | 64 | |
 | `max_body_bytes`, `max_messages`, `max_message_bytes` | 262144, 64, 65536 | request limits |
 | `allowed_origins` | `[]` | CORS origins for use from another site, or `['*']` |
 | `log_file` | none | request log: one UTC line per request that carried messages or changed membership |
@@ -54,8 +54,8 @@ exactly those rows in the same `BEGIN IMMEDIATE` transaction.
 
 ### Node Server (`server/node`)
 
-`node server/node/server.js [port]` runs a WebSocket server with rooms, presence and a
-`sendBeacon` endpoint (`<url>/beacon?id=&room=`, body `{ to, msg }`). It also serves the demos.
+`node server/node/server.js [port]` runs a WebSocket server with groups, presence and a
+`sendBeacon` endpoint (`<url>/beacon?id=&group=`, body `{ to, msg }`). It also serves the demos.
 Put it behind a TLS reverse proxy for `wss://`.
 
 ### A Server of Your Own

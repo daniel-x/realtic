@@ -43,7 +43,7 @@ retired sessions, and messages whose `rs` names a retired local session, are dro
 PHP server (`signal.php`), one POST per poll, body sent as `text/plain`:
 
 ```
-POST signal.php?room=<room>&id=<id>
+POST signal.php?group=<group>&id=<id>
 { "send": [{ "to": "B2", "msg": { ... } }], "leave": false }
 -> { "messages": [{ "from": "B2", "msg": { ... } }], "members": ["A1", "B2"], "fastMs": 250, "idleMs": 3000 }
 ```
@@ -51,11 +51,11 @@ POST signal.php?room=<room>&id=<id>
 Presence is the difference between consecutive `members` lists. `leave: true` removes the client;
 `navigator.sendBeacon` uses the same request.
 
-Node server: WebSocket `ws(s)://host/signal?id=&room=`. Client frames `{ to, msg }`, server frames
+Node server: WebSocket `ws(s)://host/signal?id=&group=`. Client frames `{ to, msg }`, server frames
 `{ from, msg }` and `{ presence: "join" | "leave", peer }`; beacons POST `{ to, msg }` to
-`/beacon?id=&room=`.
+`/beacon?id=&group=`.
 
-Room and client ids match `[A-Za-z0-9_.-]{1,64}`.
+Group names and client ids match `[A-Za-z0-9_.-]{1,64}`.
 
 ## 2. Per-hop Control Channel `ctl`
 

@@ -1,7 +1,7 @@
 /**
  * Signaling adapter for the PHP reference server (`server/php/signal.php`): repeated polling
  * (pull), no long-lived requests. Each request carries the queued outgoing messages and returns
- * the pending incoming ones plus the room's member list, from which presence events are derived.
+ * the pending incoming ones plus the group's member list, from which presence events are derived.
  *
  * The adapter polls every `fastMs` while signaling is active (a message sent or received within
  * `activeMs`) and every `idleMs` otherwise; once the mesh is up, most signaling goes over it and
@@ -27,20 +27,20 @@ export class PollingSignaling {
    *   resolve against the page)
    * @param {string} selfId
    * @param {object} [options]
-   * @param {string} [options.room]
+   * @param {string} [options.group]
    * @param {number} [options.fastMs] poll interval while active (server default 250)
    * @param {number} [options.idleMs] poll interval while idle (server default 3000)
    * @param {number} [options.activeMs] how long a message keeps polling fast
    * @param {number} [options.timeoutMs] request timeout
    * @param {typeof fetch} [options.fetch]
    */
-  constructor(url, selfId, { room = "default", fastMs, idleMs, activeMs = 5000, timeoutMs = 10000, fetch: fetchFn } = {}) {
+  constructor(url, selfId, { group = "default", fastMs, idleMs, activeMs = 5000, timeoutMs = 10000, fetch: fetchFn } = {}) {
     const u = new URL(url, globalThis.location?.href);
-    u.searchParams.set("room", room);
+    u.searchParams.set("group", group);
     u.searchParams.set("id", selfId);
     this.url = u.toString();
     this.selfId = selfId;
-    this.room = room;
+    this.group = group;
     this.fastMs = fastMs;
     this.idleMs = idleMs;
     this.activeMs = activeMs;

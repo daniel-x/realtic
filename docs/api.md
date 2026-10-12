@@ -9,7 +9,7 @@ import { Group } from "realtic";
 ```js
 const group = new Group({
   selfId,          // optional, generated when absent; use a fresh id per page load
-  signaling,       // { url, room, type? } of a reference server, or an adapter (see below)
+  signaling,       // { url, group, type? } of a reference server, or an adapter (see below)
   iceServers,      // passed to RTCPeerConnection (TURN handling: config.turnMode)
   config,          // overrides of DEFAULTS (src/config.js)
   autoPeers,       // add peers from the adapter's presence events and incoming hello
@@ -99,14 +99,14 @@ entries.
 
 ## Signaling Adapters
 
-`Group({ signaling })` accepts settings `{ url, room, type, fastMs, idleMs }` and creates the
+`Group({ signaling })` accepts settings `{ url, group, type, fastMs, idleMs }` and creates the
 adapter with `createSignaling(settings, selfId)`. `type` defaults to `"websocket"` for `ws:` and
 `wss:` URLs and to `"polling"` otherwise.
 
-- `PollingSignaling(url, selfId, { room, fastMs, idleMs, activeMs, timeoutMs })` for
+- `PollingSignaling(url, selfId, { group, fastMs, idleMs, activeMs, timeoutMs })` for
   `server/php/signal.php`. Polls every `fastMs` while signaling is active (for `activeMs`, 5000,
   after a message) and every `idleMs` otherwise; without options it uses the server's values.
-- `WebSocketSignaling(url, selfId, { room })` for `server/node/server.js`.
+- `WebSocketSignaling(url, selfId, { group })` for `server/node/server.js`.
 - `MemoryHub` for tests: `hub.join(id)` returns an adapter.
 
 An adapter of your own implements `send(to, msg)`, `onmessage(from, msg)`, optionally

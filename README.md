@@ -25,7 +25,7 @@ playing across route changes.
 import { Group } from "realtic";
 
 const group = new Group({
-  signaling: { url: "https://example.com/realtic/signal.php", room: "demo" },
+  signaling: { url: "https://example.com/realtic/signal.php", group: "demo" },
   iceServers: [{ urls: "stun:stun.example.com:3478" }],
   autoPeers: true,
 });
@@ -54,11 +54,11 @@ Run the demos with either:
 
 ```sh
 php -S localhost:8080 server/php/router.php
-# http://localhost:8080/examples/call/?room=test   (open in several tabs or devices)
-# http://localhost:8080/examples/chat/?room=test
+# http://localhost:8080/examples/call/?group=test   (open in several tabs or devices)
+# http://localhost:8080/examples/chat/?group=test
 
 npm install && node server/node/server.js 8080
-# http://localhost:8080/examples/call/?room=test&server=node
+# http://localhost:8080/examples/call/?group=test&server=node
 ```
 
 ## Documentation

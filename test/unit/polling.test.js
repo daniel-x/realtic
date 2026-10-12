@@ -28,8 +28,8 @@ async function until(fn, ms = 5000) {
   }
 }
 
-function client(id, room) {
-  const a = new PollingSignaling(server.url, id, { room, fastMs: 50, idleMs: 200 });
+function client(id, group) {
+  const a = new PollingSignaling(server.url, id, { group, fastMs: 50, idleMs: 200 });
   a.got = [];
   a.presence = [];
   a.onmessage = (from, msg) => a.got.push({ from, msg });
@@ -39,7 +39,7 @@ function client(id, room) {
 }
 
 test("createSignaling picks the adapter from the URL", () => {
-  const ws = createSignaling({ url: "ws://localhost:1/signal", room: "r" }, "A");
+  const ws = createSignaling({ url: "ws://localhost:1/signal", group: "r" }, "A");
   assert.ok(ws instanceof WebSocketSignaling);
   ws.close();
   const p = createSignaling({ url: "http://localhost:1/signal.php" }, "A");
@@ -77,7 +77,7 @@ test("server down: connected goes false and recovers", { skip: !hasPhp && "no PH
 });
 
 test("messages to non-members are dropped, bad ids rejected", { skip: !hasPhp && "no PHP" }, async () => {
-  const response = await fetch(`${server.url}?room=r3&id=${encodeURIComponent("bad id")}`, { method: "POST", body: "{}" });
+  const response = await fetch(`${server.url}?group=r3&id=${encodeURIComponent("bad id")}`, { method: "POST", body: "{}" });
   assert.equal(response.status, 400);
   const a = client("E", "r3");
   await until(() => a.presence.length === 0 && a.connected);

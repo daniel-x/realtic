@@ -13,12 +13,12 @@ export class WebSocketSignaling {
   /**
    * @param {string} url server URL, e.g. `wss://example.com/signal`
    * @param {string} selfId
-   * @param {{room?: string, WebSocket?: typeof WebSocket}} [options]
+   * @param {{group?: string, WebSocket?: typeof WebSocket}} [options]
    */
-  constructor(url, selfId, { room = "default", WebSocket: WS = globalThis.WebSocket } = {}) {
+  constructor(url, selfId, { group = "default", WebSocket: WS = globalThis.WebSocket } = {}) {
     this.url = url;
     this.selfId = selfId;
-    this.room = room;
+    this.group = group;
     this.WS = WS;
     /** @type {((from: string, message: object) => void) | null} */
     this.onmessage = null;
@@ -38,7 +38,7 @@ export class WebSocketSignaling {
     if (this.#closed) return;
     const u = new URL(this.url);
     u.searchParams.set("id", this.selfId);
-    u.searchParams.set("room", this.room);
+    u.searchParams.set("group", this.group);
     const ws = new this.WS(u.toString());
     this.#ws = ws;
     ws.onopen = () => {
@@ -83,7 +83,7 @@ export class WebSocketSignaling {
     u.protocol = u.protocol === "wss:" ? "https:" : "http:";
     u.pathname = u.pathname.replace(/\/?$/, "/beacon");
     u.searchParams.set("id", this.selfId);
-    u.searchParams.set("room", this.room);
+    u.searchParams.set("group", this.group);
     return globalThis.navigator?.sendBeacon?.(u.toString(), JSON.stringify({ to, msg: message })) ?? false;
   }
 

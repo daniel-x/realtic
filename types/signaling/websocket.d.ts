@@ -8,15 +8,15 @@ export class WebSocketSignaling {
     /**
      * @param {string} url server URL, e.g. `wss://example.com/signal`
      * @param {string} selfId
-     * @param {{room?: string, WebSocket?: typeof WebSocket}} [options]
+     * @param {{group?: string, WebSocket?: typeof WebSocket}} [options]
      */
-    constructor(url: string, selfId: string, { room, WebSocket: WS }?: {
-        room?: string;
+    constructor(url: string, selfId: string, { group, WebSocket: WS }?: {
+        group?: string;
         WebSocket?: typeof WebSocket;
     });
     url: string;
     selfId: string;
-    room: string;
+    group: string;
     WS: {
         new (url: string | URL, protocols?: string | string[]): WebSocket;
         prototype: WebSocket;
