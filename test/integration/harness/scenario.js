@@ -1,7 +1,7 @@
 // Scenario helper: one signaling server, N peers in pages of chosen browsers, optional netem
 // proxy between every directed pair, and helpers for waiting and assertions.
 import { createSignalingServer } from "../../../examples/server/server.js";
-import { openPage, closeBrowsers } from "./browsers.js";
+import { openPage, closeBrowsers, dedicatedBrowser } from "./browsers.js";
 import { NetemProxy } from "./netem.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -54,8 +54,10 @@ export class Scenario {
    * @param {RTCIceServer[]} [options.iceServers]
    * @param {string} [options.name] used for failure artifacts
    */
-  constructor({ browsers, proxy = true, config = {}, peerConfig = {}, iceServers = [], name = "scenario" }) {
+  constructor({ browsers, proxy = true, config = {}, peerConfig = {}, iceServers = [], name = "scenario", dedicated = [] }) {
     this.browsers = browsers;
+    this.dedicated = dedicated;
+    this.ownBrowsers = new Map();
     this.useProxy = proxy;
     this.config = config;
     this.peerConfig = peerConfig;
@@ -73,14 +75,19 @@ export class Scenario {
     const letters = "ABCDEFGHIJKLMNOP";
     for (let i = 0; i < this.browsers.length; i++) {
       const id = `${letters[i]}${Math.random().toString(36).slice(2, 6)}`;
-      await this.openPeer(id, this.browsers[i]);
+      let own;
+      if (this.dedicated.includes(i)) {
+        own = await dedicatedBrowser(this.browsers[i]);
+        this.ownBrowsers.set(id, own);
+      }
+      await this.openPeer(id, this.browsers[i], {}, own);
     }
     return this;
   }
 
   /** Opens one peer page and starts its group. */
-  async openPeer(id, browser, extraConfig = {}) {
-    const page = await openPage(browser, `${this.base}/test/integration/pages/peer.html`);
+  async openPeer(id, browser, extraConfig = {}, own) {
+    const page = await openPage(browser, `${this.base}/test/integration/pages/peer.html`, own);
     if (this.proxy) await page.exposeFunction("__outgoingSignal", (to, msg) => this.proxy.rewrite(id, to, msg));
     await page.waitForFunction(() => window.t?.ready);
     await page.evaluate((o) => window.t.start(o), {
@@ -177,9 +184,18 @@ export class Scenario {
     await page.context().close().catch(() => {});
   }
 
+  /** Kills the browser process of a peer opened with `dedicated`. */
+  killBrowser(p) {
+    const id = this.#id(p);
+    this.ownBrowsers.get(id)?.server.process().kill("SIGKILL");
+    this.ownBrowsers.delete(id);
+    this.pages.delete(id);
+  }
+
   async stop() {
     for (const page of this.pages.values()) await page.context().close().catch(() => {});
     this.pages.clear();
+    for (const b of this.ownBrowsers.values()) await b.server.close().catch(() => {});
     await this.proxy?.stop();
     await this.server?.close();
   }

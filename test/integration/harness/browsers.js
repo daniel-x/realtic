@@ -39,12 +39,27 @@ export async function browser(name) {
 }
 
 /**
+ * Launches a separate browser server, e.g. one whose process a test kills. Returns a connected
+ * Browser with `server` (BrowserServer, has `process()`).
+ */
+export async function dedicatedBrowser(name) {
+  const options = {};
+  if (name === "chromium") options.args = CHROMIUM_ARGS;
+  if (name === "firefox") options.firefoxUserPrefs = FIREFOX_PREFS;
+  const server = await engines[name].launchServer(options);
+  const b = await engines[name].connect(server.wsEndpoint());
+  b.server = server;
+  return b;
+}
+
+/**
  * Opens a page in a fresh browser context of the given engine.
  * @param {"chromium"|"firefox"|"webkit"} name
  * @param {string} url
+ * @param {import("playwright").Browser} [own] a dedicated browser instance
  */
-export async function openPage(name, url) {
-  const b = await browser(name);
+export async function openPage(name, url, own) {
+  const b = own ?? (await browser(name));
   const context = await b.newContext(name === "chromium" ? { permissions: ["camera", "microphone"] } : {});
   const page = await context.newPage();
   page.on("pageerror", (e) => console.error(`[${name} pageerror]`, e.message));

@@ -27,8 +27,12 @@ t.start = ({ id, signalingUrl, room = "test", config = {}, iceServers = [], hook
   const testHooks = {};
   if (hooks && window.__outgoingSignal) testHooks.outgoingSignal = (to, msg) => window.__outgoingSignal(to, msg);
   if (config.probeIceServers) testHooks.probeIceServers = config.probeIceServers;
+  if (config.protocol) testHooks.protocol = config.protocol;
+  if (config.caps) testHooks.caps = config.caps;
+  testHooks.onForward = (bytes) => t.forwarded && t.forwarded.length < 2000 && t.forwarded.push(new TextDecoder().decode(bytes));
   const cfg = { ...config, testHooks };
-  delete cfg.probeIceServers;
+  if (config.relayDenyAll) cfg.allowRelay = () => false;
+  for (const k of ["probeIceServers", "protocol", "caps", "relayDenyAll"]) delete cfg[k];
   const group = new Group({ selfId: id, signaling, iceServers, config: cfg, autoPeers });
   t.group = group;
   group.on("peer", (peer) => wirePeer(peer));
@@ -147,6 +151,61 @@ t.publishAudio = async (tag = "mic") => {
   t.pubs.set(tag, pub);
   return pub.id;
 };
+/** A 640x360 noise video track at 15 fps: incompressible, so the encoder uses all bitrate it gets. */
+t.noiseTrack = () => {
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 360;
+  const ctx = canvas.getContext("2d");
+  const img = ctx.createImageData(640, 360);
+  const words = new Uint32Array(img.data.buffer);
+  setInterval(() => {
+    for (let i = 0; i < words.length; i++) words[i] = (Math.random() * 0xffffffff) | 0xff000000;
+    ctx.putImageData(img, 0, 0);
+  }, 66);
+  return canvas.captureStream(15).getVideoTracks()[0];
+};
+t.publishNoise = (tag = "noise") => {
+  const pub = t.group.publish(t.noiseTrack(), { tag });
+  t.pubs = t.pubs ?? new Map();
+  t.pubs.set(tag, pub);
+  return pub.id;
+};
+t.publishCamera = async (tag = "camera", size = { width: 320, height: 240 }) => {
+  const stream = await navigator.mediaDevices.getUserMedia({ video: size });
+  const pub = t.group.publish(stream.getVideoTracks()[0], { tag });
+  t.pubs = t.pubs ?? new Map();
+  t.pubs.set(tag, pub);
+  return pub.id;
+};
+/** Outbound video bitrate in bps toward peerId over `ms`. */
+t.outboundBitrate = async (peerId, ms = 2000) => {
+  const pc = t.group.links.get(peerId)?.pc;
+  const bytes = async () => {
+    let n = 0;
+    (await pc.getStats()).forEach((s) => {
+      if (s.type === "outbound-rtp" && s.kind === "video") n += s.bytesSent;
+    });
+    return n;
+  };
+  const b0 = await bytes();
+  await new Promise((r) => setTimeout(r, ms));
+  return ((await bytes()) - b0) * 8 / (ms / 1000);
+};
+/** Inbound media bytes from peerId. */
+t.inboundBytes = async (peerId, kind) => {
+  const pc = t.group.links.get(peerId)?.pc;
+  let n = 0;
+  (await pc.getStats()).forEach((s) => {
+    if (s.type === "inbound-rtp" && (!kind || s.kind === kind)) n += s.bytesReceived;
+  });
+  return n;
+};
+/** maxBitrate of the video senders toward peerId. */
+t.senderParams = (peerId) => {
+  const pc = t.group.links.get(peerId)?.pc;
+  return pc.getSenders().filter((s) => s.track?.kind === "video").map((s) => s.getParameters().encodings?.map((e) => ({ active: e.active, maxBitrate: e.maxBitrate, scale: e.scaleResolutionDownBy })));
+};
 t.replaceCounter = async (tag) => {
   await t.pubs.get(tag).replaceTrack(t.counterTrack());
 };
@@ -219,11 +278,19 @@ t.setSubscription = (origin, sub) => t.group.setSubscription(origin, sub);
 t.leave = () => t.group.leave();
 t.close = () => t.group.close();
 t.hook = {
-  rebuild: (peerId) => t.group.links.get(peerId)?.rebuild("test hook"),
+  rebuild: (peerId) => t.group.links.get(peerId)?.rebuild("test hook", true),
   abortTransport: (peerId) => t.group.links.get(peerId)?.abortTransport(),
   busy: (ms) => {
     const end = performance.now() + ms;
     while (performance.now() < end);
+  },
+  captureForwarded: () => (t.forwarded = []),
+  sendCtl: (peerId, msg) => t.group.links.get(peerId)?.sendCtl(msg),
+  rawEnvelope: async (via, target) => {
+    const { encode } = await import("../../../src/transport/framing.js");
+    const link = t.group.links.get(via);
+    const dstIdx = t.group.localIndex(link, target);
+    link.sendEnvelope("rel", "raw", encode({ version: 1, type: 0, flags: 1, srcIdx: 0, dstIdx, channelId: 9, seq: 1, payload: new Uint8Array(40) }));
   },
   visibility: (hidden) => {
     Object.defineProperty(document, "visibilityState", { value: hidden ? "hidden" : "visible", configurable: true });

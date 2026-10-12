@@ -68,6 +68,8 @@ export class Group extends Emitter {
     this.onListenerError = (error, name) => this.log.write("error", "app", `listener for ${name} threw`, { error: error?.message, stack: error?.stack });
     this.l = this.log.scope("signaling");
     this.hooks = this.config.testHooks ?? {};
+    /** Protocol version this peer speaks (test hooks may override it). */
+    this.protocol = this.hooks.protocol ?? PROTOCOL;
     this.router = new SignalingRouter({
       selfId,
       adapter: () => this.signaling,
@@ -100,7 +102,7 @@ export class Group extends Emitter {
   async #init() {
     this.#keys = await generateKeyPair();
     this.#publicJwk = await exportPublic(this.#keys.publicKey);
-    this.#caps = await collectCaps();
+    this.#caps = { ...(await collectCaps()), ...(this.hooks.caps ?? {}) };
   }
 
   /** Resolves when keys and capabilities are ready. */
@@ -203,7 +205,7 @@ export class Group extends Emitter {
     return {
       t: "hello",
       ack,
-      proto: { major: PROTOCOL.major, minor: PROTOCOL.minor, features: PROTOCOL.features },
+      proto: { major: this.protocol.major, minor: this.protocol.minor, features: this.protocol.features },
       key: this.#publicJwk,
       caps: this.#caps,
       relay: this.config.relay,
@@ -239,17 +241,17 @@ export class Group extends Emitter {
     this.#helloDone.add(from);
     this.clock.clearInterval(this.#helloTimers.get(from));
     this.#helloTimers.delete(from);
-    if (msg.proto?.major !== PROTOCOL.major) {
-      peer.lastError = `protocol major ${msg.proto?.major} differs from ${PROTOCOL.major}`;
+    if (msg.proto?.major !== this.protocol.major) {
+      peer.lastError = `protocol major ${msg.proto?.major} differs from ${this.protocol.major}`;
       peer.hint = "protocol-mismatch";
-      this.log.write("error", "signaling", "protocol mismatch", { remote: msg.proto, local: PROTOCOL }, { peer: from });
+      this.log.write("error", "signaling", "protocol mismatch", { remote: msg.proto, local: this.protocol }, { peer: from });
       peer.setState("unreachable", "protocol-mismatch");
       return;
     }
     if (!first && peer.remote) return;
-    const minor = Math.min(PROTOCOL.minor, msg.proto.minor ?? 0);
-    const featuresCommon = PROTOCOL.features.filter((f) => (msg.proto.features ?? []).includes(f));
-    peer.remote = { ...msg, proto: { major: PROTOCOL.major, minor, features: featuresCommon } };
+    const minor = Math.min(this.protocol.minor, msg.proto.minor ?? 0);
+    const featuresCommon = this.protocol.features.filter((f) => (msg.proto.features ?? []).includes(f));
+    peer.remote = { ...msg, proto: { major: this.protocol.major, minor, features: featuresCommon } };
     try {
       peer.pairKey = await derivePairKey(this.#keys.privateKey, msg.key, this.selfId, from);
     } catch (error) {
@@ -402,7 +404,7 @@ export class Group extends Emitter {
   #onEnvelope(link, bytes, key) {
     const e = decode(bytes);
     if (!e) return;
-    if (e.version !== PROTOCOL.major) {
+    if (e.version !== this.protocol.major) {
       this.log.write("warn", "channel", "dropped envelope with other major version", { version: e.version }, { peer: link.remoteId });
       return;
     }
@@ -420,7 +422,7 @@ export class Group extends Emitter {
         this.log.write("debug", "relay", "dropped envelope from unknown relay flow", { via: link.remoteId }, { peer: src });
         return;
       }
-      peer.receiveEnvelope(e, relayed);
+      peer.receiveEnvelope(e, relayed, link.remoteId);
       return;
     }
     this.routing.forward(link, src, dst, bytes, e, key);
@@ -523,7 +525,7 @@ export class Group extends Emitter {
     const n = normalize(sub);
     this.#subscriptions.set(origin, n);
     this.log.write("info", "media", "subscription", n, { peer: origin });
-    this.routing.subscriptionChanged(origin, n);
+    this.routing.subscriptionChanged(origin);
   }
 
   // Lifecycle -----------------------------------------------------------------------------------

@@ -10,6 +10,8 @@ export class DataRelay {
   flows = new Map();
   #group;
   #bytesWindow = 0;
+  #hopLevel = new Map();
+  #timer = null;
   #rate = 0;
   #rateAt = 0;
 
@@ -18,6 +20,22 @@ export class DataRelay {
     this.#group = group;
     this.l = group.log.scope("relay");
     this.#rateAt = group.clock.now();
+    this.#timer = group.clock.setInterval(() => this.#watchHops(), group.config.LIVENESS_CHECK_INTERVAL_MS);
+  }
+
+  /** Judges the hops of relayed flows by silence, faster than the link's own stale verdict. */
+  #watchHops() {
+    if (!this.flows.size) return;
+    const g = this.#group;
+    const ends = new Set();
+    for (const f of this.flows.values()) ends.add(f.origin).add(f.target);
+    for (const id of ends) {
+      const link = g.links.get(id);
+      if (!link || link.remoteBackground) continue;
+      const silence = link.silence;
+      const level = silence >= g.config.relayHopDownMs ? "stale" : silence >= g.config.SLOW_CONNECTION_MS ? "slow" : "ok";
+      this.hopChanged(id, level);
+    }
   }
 
   static key(origin, target, flow) {
@@ -140,6 +158,7 @@ export class DataRelay {
       rewriteLifetime(copy, remaining);
     }
     this.#bytesWindow += copy.length;
+    g.hooks.onForward?.(copy);
     next.sendEnvelope(key, `relay:${src}>${dst}:${e.channelId}`, copy);
   }
 
@@ -149,6 +168,12 @@ export class DataRelay {
    * @param {"ok"|"slow"|"stale"} verdict
    */
   hopChanged(peerId, verdict) {
+    const prev = this.#hopLevel.get(peerId) ?? "ok";
+    if (verdict === prev || (verdict === "slow" && prev === "stale")) {
+      if (verdict === "ok") this.#hopLevel.set(peerId, "ok");
+      return;
+    }
+    this.#hopLevel.set(peerId, verdict);
     if (verdict === "ok") return;
     const g = this.#group;
     const t = verdict === "stale" ? "route-down" : "route-slow";
@@ -171,6 +196,10 @@ export class DataRelay {
       this.#group.links.get(other)?.sendCtl({ t: "route-down", origin: peerId, target: other });
       this.#group.links.get(other)?.sendCtl({ t: "relay-close", flow: f.flow, origin: f.origin });
     }
+  }
+
+  close() {
+    this.#group.clock.clearInterval(this.#timer);
   }
 
   /** Flows as plain objects, for diagnostics. */

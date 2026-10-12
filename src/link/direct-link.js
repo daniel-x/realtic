@@ -69,6 +69,8 @@ export class DirectLink extends Emitter {
   #statsTimer = null;
   #polling = false;
   #lastRestartAt = -Infinity;
+  #lastRebuildAt = -Infinity;
+  #lastVerdictAt = -Infinity;
   #remoteVerdict = "ok";
   #turnAdded = false;
   #closed = false;
@@ -136,6 +138,11 @@ export class DirectLink extends Emitter {
     return this.#reason;
   }
 
+  /** Milliseconds since data or media last arrived (consent too in background mode). */
+  get silence() {
+    return this.#conn?.ctlOpen ? this.#monitor.silence : Infinity;
+  }
+
   /** Liveness verdict: `ok`, `slow` or `stale`. */
   get liveness() {
     return this.#monitor.state;
@@ -185,12 +192,23 @@ export class DirectLink extends Emitter {
     this.#heartbeat.start();
   }
 
-  #newConn(reason) {
+  #newConn(reason, silent = false) {
     const old = this.#conn;
-    if (old) this.#retire(old);
+    if (old) {
+      this.#retire(old, silent);
+      this.#lastRebuildAt = this.clock.now();
+    }
     const conn = new Conn();
+    let pc;
+    try {
+      pc = new this.ctx.RTCPeerConnection(this.ctx.rtcConfig(this, this.#turnAdded));
+    } catch (error) {
+      this.#noteError("RTCPeerConnection", error);
+      this.#conn = null;
+      this.#setState("unreachable", `cannot create RTCPeerConnection: ${error.message}`);
+      return;
+    }
     this.#conn = conn;
-    const pc = new this.ctx.RTCPeerConnection(this.ctx.rtcConfig(this, this.#turnAdded));
     conn.pc = pc;
     this.l.info("new connection", { session: conn.session, reason, impolite: this.impolite });
     conn.hop = new HopChannels(pc, {
@@ -202,9 +220,10 @@ export class DirectLink extends Emitter {
     });
     conn.hop.on("open", (key) => key === CTL && this.#onCtlOpen(conn));
     conn.hop.on("transportclose", (key) => this.#onTransportClose(conn, key));
-    conn.hop.on("beat", () => this.#monitor.noteData());
+    conn.hop.on("beat", () => !conn.closed && this.#monitor.noteData());
     conn.hop.on("ctl", (msg) => this.#onCtl(conn, msg));
     conn.hop.on("envelope", (bytes, key) => {
+      if (conn.closed) return;
       this.#monitor.noteData();
       this.emit("envelope", bytes, key);
     });
@@ -241,7 +260,7 @@ export class DirectLink extends Emitter {
     if (this.impolite) this.#queue.push(() => conn.neg.negotiate("initial"));
   }
 
-  #retire(conn) {
+  #retire(conn, silent = false) {
     conn.closed = true;
     if (conn.connectTimer !== null) this.clock.clearTimeout(conn.connectTimer);
     this.#localRetired.add(conn.session);
@@ -249,13 +268,17 @@ export class DirectLink extends Emitter {
     conn.batcher.close();
     for (const r of conn.slotRequests.values()) r.reject(new Error("link rebuilt"));
     for (const w of conn.stableWaiters) w(false);
-    conn.hop.close();
-    try {
-      conn.pc.close();
-    } catch {
-      // already closed
-    }
     this.#watchdog.clear();
+    const close = () => {
+      conn.hop.close();
+      try {
+        conn.pc.close();
+      } catch {
+        // already closed
+      }
+    };
+    if (silent) this.clock.setTimeout(close, 30000);
+    else close();
   }
 
   #signal(conn, msg) {
@@ -315,8 +338,8 @@ export class DirectLink extends Emitter {
 
   async #onRenegotiate(conn, msg) {
     if (!this.impolite) return;
-    if (msg.rebuild && conn.pc.remoteDescription) {
-      this.#newConn("rebuild requested");
+    if (msg.rebuild) {
+      if (conn.pc.remoteDescription && this.clock.now() - this.#lastRebuildAt > RESTART_REQUEST_GAP_MS) this.#newConn("rebuild requested");
       return;
     }
     if (msg.iceRestart) {
@@ -366,10 +389,12 @@ export class DirectLink extends Emitter {
   #onTransportClose(conn, key) {
     if (conn.closed || this.#closed) return;
     this.l.warn("transport channel closed by remote", { key });
-    if (key === CTL) {
-      conn.ctlOpen = false;
-      this.#startRecovery("control channel closed");
-    }
+    if (key !== CTL) return;
+    conn.ctlOpen = false;
+    this.lastError = "control channel closed";
+    if (this.#state !== "unreachable") this.#setState("recovering", "control channel closed");
+    this.#rebuild("control channel closed");
+    this.#startRecovery("control channel closed");
   }
 
   #onWatchdog() {
@@ -414,6 +439,7 @@ export class DirectLink extends Emitter {
 
   #onLiveness(state, silence) {
     this.l.info(`liveness ${state}`, { silenceMs: Math.round(silence), background: this.#monitor.background });
+    this.#lastVerdictAt = this.clock.now();
     this.#conn?.hop.sendCtl({ t: "liveness", state });
     if (state === "stale") this.#startRecovery("stale: no data for " + Math.round(silence) + " ms");
     else this.#evaluate("liveness " + state);
@@ -422,6 +448,10 @@ export class DirectLink extends Emitter {
   #check() {
     if (this.#closed || !this.#conn?.ctlOpen) return;
     this.#monitor.check();
+    if (this.#monitor.state !== "ok" && this.clock.now() - this.#lastVerdictAt >= 1000) {
+      this.#lastVerdictAt = this.clock.now();
+      this.#conn.hop.sendCtl({ t: "liveness", state: this.#monitor.state });
+    }
     if (this.#monitor.dataSilence >= this.config.LIVENESS_CHECK_INTERVAL_MS && !this.#polling) this.#pollLiveness();
   }
 
@@ -584,11 +614,20 @@ export class DirectLink extends Emitter {
       this.#rebuild("restart before first answer");
       return;
     }
-    conn.pc.restartIce();
+    this.#queue.push(async () => {
+      if (conn.closed) return;
+      if (conn.pc.signalingState === "have-local-offer") {
+        this.l.info("rolling back unanswered offer");
+        await conn.pc.setLocalDescription({ type: "rollback" });
+      }
+      conn.pc.restartIce();
+      await conn.neg.negotiate("ice restart");
+    });
   }
 
   #rebuild(reason) {
     if (this.#closed) return;
+    if (this.clock.now() - this.#lastRebuildAt < RESTART_REQUEST_GAP_MS) return;
     if (this.impolite) this.#newConn(reason);
     else {
       this.l.info("asking for rebuild", { reason });
@@ -604,14 +643,18 @@ export class DirectLink extends Emitter {
   iceRestart(reason) {
     const conn = this.#conn;
     if (!conn || this.#closed) return;
-    if (this.impolite) this.#queue.push(() => this.#iceRestartNow(conn, reason));
+    if (this.impolite) this.#iceRestartNow(conn, reason);
     else this.#signal(conn, { t: "renegotiate", iceRestart: true, reason });
   }
 
-  /** Rebuilds the connection now (also used by test hooks to rebuild silently). */
-  rebuild(reason = "requested") {
+  /**
+   * Rebuilds the connection now. With `silent`, the old connection is abandoned without closing
+   * it, so the remote side learns of the rebuild only from the new session id (test hook for
+   * doc §3.6).
+   */
+  rebuild(reason = "requested", silent = false) {
     if (this.#closed) return;
-    this.#newConn(reason);
+    this.#newConn(reason, silent);
     if (!this.impolite) this.#signal(this.#conn, { t: "renegotiate", rebuild: true, reason });
   }
 

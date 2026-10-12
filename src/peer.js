@@ -4,7 +4,6 @@ import { Session } from "./channel/session.js";
 import { encode, split, aad, FLAG, TYPE, Reassembler, headerLength } from "./transport/framing.js";
 import { encrypt, decrypt, OVERHEAD } from "./crypto/e2e.js";
 import { LivenessMonitor } from "./liveness/monitor.js";
-import { PROTOCOL } from "./config.js";
 
 const LOG_PART_BYTES = 16384;
 
@@ -59,7 +58,6 @@ export class Peer extends Emitter {
     });
     this.session.on("channel", (ch) => this.emit("channel", ch));
     this.session.on("control", (msg) => this.#onControl(msg));
-    this.session.on("beat", () => this.#e2eMonitor.noteData());
     const c = group.config;
     this.#e2eMonitor = new LivenessMonitor({
       now: () => group.clock.now(),
@@ -225,7 +223,16 @@ export class Peer extends Emitter {
 
   #startBeats() {
     if (this.#beatTimer !== null) return;
-    this.#beatTimer = this.#group.clock.setInterval(() => this.session.sendBeat(), this.#group.config.HEARTBEAT_IDLE_MS);
+    const c = this.#group.config;
+    let last = 0;
+    this.#beatTimer = this.#group.clock.setInterval(() => {
+      this.#e2eMonitor.check();
+      const now = this.#group.clock.now();
+      if (now - last >= c.HEARTBEAT_IDLE_MS) {
+        last = now;
+        this.session.sendBeat();
+      }
+    }, c.LIVENESS_CHECK_INTERVAL_MS);
   }
 
   #stopBeats() {
@@ -265,7 +272,7 @@ export class Peer extends Emitter {
     const parts = split(e.payload, Math.max(256, room));
     const total = e.payload.length + parts.length * 64;
     if (link.queuedBytes(key, flow) + total > this.#group.config.relayQueueBytes) return false;
-    const base = { version: PROTOCOL.major, type: e.type, flags, srcIdx: 0, dstIdx, channelId: e.channelId, seq: e.seq, lifetime: e.lifetime };
+    const base = { version: this.#group.protocol.major, type: e.type, flags, srcIdx: 0, dstIdx, channelId: e.channelId, seq: e.seq, lifetime: e.lifetime };
     const fragmented = parts.length > 1;
     const envelopes = parts.map((payload, i) => (fragmented ? { ...base, fragIndex: i, fragCount: parts.length, payload } : { ...base, payload }));
     if (!encrypted) {
@@ -294,14 +301,16 @@ export class Peer extends Emitter {
    * Handles an envelope addressed to us from this peer.
    * @param {import("./transport/framing.js").Envelope} e
    * @param {boolean} relayed
+   * @param {string} via neighbor the envelope arrived from
    */
-  receiveEnvelope(e, relayed) {
+  receiveEnvelope(e, relayed, via) {
     const encrypted = (e.flags & FLAG.ENCRYPTED) !== 0;
     if (relayed !== encrypted) {
       this.l.warn("dropped envelope with wrong encryption", { relayed, encrypted });
       return;
     }
-    if (relayed) this.#e2eMonitor.noteData();
+    const onActive = relayed && this.#route?.kind === "relay" && this.#route.via === via;
+    if (onActive) this.#e2eMonitor.noteData();
     if (!encrypted) return this.#complete(e, e.payload);
     if (!this.pairKey) return;
     const keyRef = this.pairKey;
@@ -318,7 +327,6 @@ export class Peer extends Emitter {
       if (!full) return;
       payload = full;
     }
-    if (e.type === TYPE.BEAT) this.#e2eMonitor.noteData();
     this.session.receive(e, payload);
   }
 

@@ -3,7 +3,6 @@ import { NeighborTables, buildLinkState } from "./link-state.js";
 import { DataRelay } from "../relay/data-relay.js";
 import { MediaRelay } from "../relay/media-relay.js";
 import { randomId } from "../util/ids.js";
-import { PROTOCOL } from "../config.js";
 
 const NEIGHBOR_TABLE_MAX_AGE_MS = 10000;
 const FLOW_REQUEST_TIMEOUT_MS = 5000;
@@ -31,8 +30,6 @@ export class Routing {
   #lastLinkState = 0;
   #beatTimer = null;
   #load = 0;
-  /** neighbor id -> Map<origin, subscription> the neighbor sent us */
-  remoteSubs = new Map();
 
   /** @param {object} group */
   constructor(group) {
@@ -82,7 +79,6 @@ export class Routing {
     }
     this.pairs.delete(peerId);
     this.neighbors.delete(peerId);
-    this.remoteSubs.delete(peerId);
     this.relay.peerGone(peerId);
     for (const [other, op] of this.pairs) {
       let lost = false;
@@ -101,12 +97,7 @@ export class Routing {
 
   linkOpen(link) {
     this.#sendLinkState(link);
-    const subs = [];
-    for (const [origin] of this.#group.peers) {
-      const sub = this.#group.subscription(origin);
-      if (sub && this.#deliveringNeighbor(origin) === link.remoteId) subs.push({ origin, ...sub });
-    }
-    for (const s of subs) link.sendCtl({ t: "subscription", ...s });
+    this.mediaRelay.resendSubscriptions(link);
     this.#updateAll("link open " + link.remoteId);
   }
 
@@ -204,33 +195,13 @@ export class Routing {
 
   onSubscription(link, msg) {
     if (typeof msg.origin !== "string") return;
-    let subs = this.remoteSubs.get(link.remoteId);
-    if (!subs) this.remoteSubs.set(link.remoteId, (subs = new Map()));
-    subs.set(msg.origin, { audio: msg.audio !== false, video: msg.video !== false, tags: Array.isArray(msg.tags) ? msg.tags : null });
-    this.l.info("remote subscription", { from: link.remoteId, origin: msg.origin, audio: msg.audio, video: msg.video, tags: msg.tags });
-    this.mediaRelay.subscriptionsChanged(msg.origin);
+    this.mediaRelay.onSubscription(link, msg);
+  }
+
+  /** Our own subscription for `origin` changed: tell the origin and the pair's relays. */
+  subscriptionChanged(origin) {
+    this.mediaRelay.sendSubscription(origin);
     this.#group.mediaChanged();
-  }
-
-  /** Our own subscription for `origin` changed: tell the neighbor that delivers its media. */
-  subscriptionChanged(origin, sub) {
-    const via = this.#deliveringNeighbor(origin);
-    const link = via && this.#group.links.get(via);
-    if (link?.ctlOpen) link.sendCtl({ t: "subscription", origin, ...sub });
-    if (via !== origin) this.#group.links.get(origin)?.sendCtl({ t: "subscription", origin, ...sub });
-    this.mediaRelay.subscriptionsChanged(origin);
-    this.#group.mediaChanged();
-  }
-
-  #deliveringNeighbor(origin) {
-    const r = this.#group.peers.get(origin)?.routeInfo;
-    if (!r) return origin;
-    return r.kind === "direct" ? origin : r.via;
-  }
-
-  /** Subscription that neighbor `neighbor` sent for `origin`. */
-  remoteSubscription(neighbor, origin) {
-    return this.remoteSubs.get(neighbor)?.get(origin);
   }
 
   // Relay flows (end side) ------------------------------------------------------------------------
@@ -271,6 +242,7 @@ export class Routing {
     f.state = "open";
     f.since = this.#group.clock.now();
     this.l.info("relay accepted", { peer: peerId, via: f.via, role: f.role });
+    this.mediaRelay.sendSubscription(peerId);
     this.#group.mediaChanged();
     this.#update(peerId, "relay accepted");
   }
@@ -300,6 +272,7 @@ export class Routing {
     p.flows.set(f.flow, f);
     p.heard.set(f.via, g.clock.now());
     this.l.info("relay open", { peer: origin, via: f.via, role: f.role });
+    this.mediaRelay.sendSubscription(origin);
     if (f.role === "active") {
       for (const other of p.flows.values()) if (other !== f && other.role === "active") other.role = "standby";
       p.ownerSaidDirect = false;
@@ -493,7 +466,7 @@ export class Routing {
         load: t.load,
         relay: t.relay,
         mediaRelay: t.mediaRelay,
-        major: g.peers.get(via)?.remote?.proto?.major ?? PROTOCOL.major,
+        major: g.peers.get(via)?.remote?.proto?.major ?? this.#group.protocol.major,
         caps: g.peers.get(via)?.remote?.caps,
       });
     }
@@ -504,7 +477,7 @@ export class Routing {
       neighbors,
       media: this.mediaRelay.pairHasMedia(peerId),
       maxRelayLoad: g.config.maxRelayLoad,
-      major: PROTOCOL.major,
+      major: this.#group.protocol.major,
       caps,
       self: g.selfId,
       mediaPolicy: (id) => (id === g.selfId ? g.config.mediaRelay : g.peers.get(id)?.remote?.mediaRelay ?? "allow"),
@@ -764,6 +737,7 @@ export class Routing {
 
   close() {
     this.#group.clock.clearInterval(this.#beatTimer);
+    this.relay.close();
     this.mediaRelay.close();
   }
 }

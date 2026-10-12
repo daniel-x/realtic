@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>realtic chat</title>
+<style>
+  body { font: 15px system-ui, sans-serif; max-width: 640px; margin: 0 auto; padding: 16px; }
+  #log { border: 1px solid #ccc; height: 50vh; overflow: auto; padding: 8px; }
+  #peers { color: #555; font-size: 13px; margin: 8px 0; }
+  form { display: flex; gap: 8px; margin-top: 8px; }
+  input { flex: 1; font: inherit; }
+</style>
+<h1>realtic chat</h1>
+<div id="peers"></div>
+<div id="log"></div>
+<form id="f"><input id="text" autocomplete="off" placeholder="message"><button>Send</button></form>
+<script type="module" src="./chat.js"></script>

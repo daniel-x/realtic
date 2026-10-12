@@ -1,0 +1,54 @@
+# Troubleshooting
+
+## Collect Both Logs
+
+realtic records every state change, signaling message, liveness verdict, ICE restart, relay
+decision and candidate pair dump in a ring buffer from the moment the `Group` is created. A
+connection has two ends; read both logs before concluding anything.
+
+```js
+copyButton.onclick = () => navigator.clipboard.writeText(group.log.text());
+const report = await group.diagnosticReport();          // JSON, send it wherever you want
+const remote = await peer.requestLog();                 // the other end, if it set shareLogWithPeers
+group.log.on("entry", (e) => forwardToServer(e));       // live, e.g. behind ?log_to_server=1
+```
+
+Timestamps are UTC, `yyyy-MM-dd_HH-mm-ss.SSS`, the same format on every device, so two logs can be
+read side by side. `config.logRedact` replaces IP addresses with placeholders.
+
+## Peer States
+
+| State | Meaning |
+| ----- | ------- |
+| `connecting` | no route yet |
+| `connected` | traffic arrives in time on the current route |
+| `slow` | no traffic for more than `SLOW_CONNECTION_MS` (1 s) |
+| `reconnecting` | the route went stale (5 s); recovery runs |
+| `unreachable` | ICE restarts and rebuilds failed and no relay route exists; `peer.lastError` and `peer.hint` say why; a background re-probe keeps trying |
+| `closed` | the peer left or was removed |
+
+## Hints
+
+`peer.hint` names a known failure pattern:
+
+- `local-network-permission`: both devices show the same public address, so they share a
+  network, and no host to host check got an answer. On Android 17+ and iOS the browser may lack
+  the local network permission. AP client isolation (guest networks) looks the same; to tell
+  them apart, ping one device from the other once the permission question is settled.
+- `mdns-unresolved`: the other device offered only `.local` names and none resolved.
+- `symmetric-nat`: no reflexive pair worked and this side's NAT maps per destination. Add a TURN
+  server, or let a third peer relay.
+- `protocol-mismatch`: the other side runs an incompatible major version of realtic.
+
+## Candidate Pairs
+
+On success the log has the selected pair (`host`, `srflx`, `relay`). On failure it has every pair
+with state, responses, bytes and nomination. Counters a browser does not report are logged as
+`unknown`, not as zero: Firefox does not report `requestsSent`, so `responsesReceived 0` together
+with `checking` is the evidence that checks went out and nothing came back.
+
+## Timing
+
+Do not lower `STALE_CONNECTION_MS` below about 1 s. A phone on idle WiFi parks its radio and
+shows latency spikes of several hundred milliseconds; a stale threshold below that tears down
+working connections. The default of 5 s survives a WiFi to LTE handover.

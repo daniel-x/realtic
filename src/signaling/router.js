@@ -3,6 +3,8 @@ import { randomId } from "../util/ids.js";
 /** Message types that must never pass through a relay peer (plan section 4.4). */
 const SERVER_OR_DIRECT = new Set(["offer", "answer"]);
 const SERVER_ONLY = new Set(["hello"]);
+/** Types that also go through the server while it is up, so a lost mesh copy costs nothing. */
+const BOTH_WHEN_UP = new Set(["offer", "answer", "renegotiate"]);
 /** Message types a relay may forward. */
 export const RELAYABLE = new Set(["cand", "renegotiate", "bye"]);
 
@@ -34,7 +36,6 @@ export class SignalingRouter {
     this.relayFor = relayFor;
     this.l = log;
     this.hooks = hooks;
-    this.serverUp = true;
   }
 
   /**
@@ -65,7 +66,7 @@ export class SignalingRouter {
     if (SERVER_ONLY.has(t)) return ["server"];
     const direct = this.link(to);
     if (direct?.ctlOpen) {
-      if (direct.healthy) return [to];
+      if (direct.healthy && direct.state === "connected") return BOTH_WHEN_UP.has(t) ? [to, "server"] : [to];
       if (direct.usable) return [to, "server"];
     }
     if (SERVER_OR_DIRECT.has(t)) return ["server"];
@@ -75,6 +76,7 @@ export class SignalingRouter {
   }
 
   #toServer(to, msg) {
+    if (this.adapter().connected === false) return;
     try {
       const r = this.adapter().send(to, msg);
       if (r && typeof r.catch === "function") r.catch((error) => this.l.warn("signaling send failed", { t: msg.t, to, error: error?.message }));

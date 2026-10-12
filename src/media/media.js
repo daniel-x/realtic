@@ -140,7 +140,7 @@ export class MediaManager {
           continue;
         }
         if (!link.ownsSlot(slot)) continue;
-        s = { slot, info: p.info, active: null, track: null };
+        s = { slot, info: p.info, active: null, track: null, applied: null };
         sending.set(p.key, s);
         changed = true;
       }
@@ -148,13 +148,11 @@ export class MediaManager {
         s.track = p.track;
         await s.slot.tr.sender.replaceTrack(p.track).catch((e) => this.l.warn("replaceTrack failed", { error: e.message }));
       }
-      if (s.active !== p.active) {
+      const applied = JSON.stringify({ active: p.active, params: p.params ?? null });
+      if (s.applied !== applied) {
+        s.applied = applied;
         s.active = p.active;
-        await setActive(s.slot.tr.sender, p.active, p.params).catch((e) => this.l.warn("setParameters failed", { error: e.message }));
-      }
-      if (p.params && s.params !== JSON.stringify(p.params)) {
-        s.params = JSON.stringify(p.params);
-        await setActive(s.slot.tr.sender, p.active, p.params).catch(() => {});
+        await setEncodings(s.slot.tr.sender, p.active, p.params).catch((e) => this.l.warn("setParameters failed", { error: e.message }));
       }
       if (JSON.stringify(s.info) !== JSON.stringify(p.info)) {
         s.info = p.info;
@@ -235,13 +233,14 @@ export class MediaManager {
   }
 }
 
-async function setActive(sender, active, params) {
+async function setEncodings(sender, active, params) {
   const p = sender.getParameters();
   if (!p.encodings || !p.encodings.length) return;
   for (const e of p.encodings) {
     e.active = active;
-    if (params?.maxBitrate !== undefined) e.maxBitrate = params.maxBitrate;
-    if (params?.scaleResolutionDownBy !== undefined && sender.track?.kind === "video") e.scaleResolutionDownBy = params.scaleResolutionDownBy;
+    if (params?.maxBitrate !== undefined) e.maxBitrate = Math.max(30000, Math.round(params.maxBitrate));
+    else delete e.maxBitrate;
+    if (sender.track?.kind === "video" || params?.scaleResolutionDownBy !== undefined) e.scaleResolutionDownBy = params?.scaleResolutionDownBy ?? 1;
   }
   await sender.setParameters(p);
 }

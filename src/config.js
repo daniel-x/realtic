@@ -47,6 +47,8 @@ export const DEFAULTS = Object.freeze({
   maxRelayLoad: 0.8,
   /** Maximum number of relay flows a peer accepts. */
   maxRelayFlows: 32,
+  /** A relay sends `route-down` for a hop silent this long, before the hop's own stale verdict. */
+  relayHopDownMs: 3000,
   /** Maximum relay hops. Only 1 is supported in this version. */
   maxHops: 1,
   /** Make-before-break overlap of a planned route switch, in RTTs, bounded below. */
