@@ -22,7 +22,7 @@ const SCALED_KEYS = [
   "linkStateIntervalMs",
   "switchHoldMs",
   "earlySwitchIntervalMs",
-  "relayHopDownMs",
+  "relayPeerDownMs",
 ];
 
 /** A library duration in the test's time scale. */

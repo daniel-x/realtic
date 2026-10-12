@@ -51,7 +51,7 @@ export class Session extends Emitter {
         earlySwitchIntervalMs: 10000;
         maxRelayLoad: 0.8;
         maxRelayFlows: 32;
-        relayHopDownMs: 3000;
+        relayPeerDownMs: 3000;
         maxHops: 2;
         switchOverlapMinMs: 50;
         ackDelayMs: 100;

@@ -112,7 +112,7 @@ export class Routing {
 
   linkState(link, state, reason) {
     const verdict = state === "recovering" || state === "unreachable" || state === "closed" ? "stale" : state === "slow" ? "slow" : "ok";
-    this.relay.hopChanged(link.remoteId, verdict);
+    this.relay.endChanged(link.remoteId, verdict);
     this.#broadcastLinkState();
     this.#updateAll(`link ${link.remoteId} ${state}: ${reason}`);
   }

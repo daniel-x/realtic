@@ -13,14 +13,14 @@ function otherEnd(f, id) {
 /**
  * Relay side of peer relaying (plan section 7.2, 9.3, decision D21): accepts or rejects relay
  * requests, forwards envelopes of accepted flows between its two neighbors, rewrites the index
- * fields, and reports hop failures to the far end with `route-down` / `route-slow`.
+ * fields, and reports a failed link to one end to the other end with `route-down` / `route-slow`.
  */
 export class DataRelay {
   /** flow key -> {flow, origin, target, role, kinds, bytes, since} */
   flows = new Map();
   #group;
   #bytesWindow = 0;
-  #hopLevel = new Map();
+  #endLevel = new Map();
   #timer = null;
   #rate = 0;
   #rateAt = 0;
@@ -30,11 +30,11 @@ export class DataRelay {
     this.#group = group;
     this.l = group.log.scope("relay");
     this.#rateAt = group.clock.now();
-    this.#timer = group.clock.setInterval(() => this.#watchHops(), group.config.LIVENESS_CHECK_INTERVAL_MS);
+    this.#timer = group.clock.setInterval(() => this.#watchEnds(), group.config.LIVENESS_CHECK_INTERVAL_MS);
   }
 
-  /** Judges the hops of relayed flows by silence, faster than the link's own stale verdict. */
-  #watchHops() {
+  /** Judges the ends of relayed flows by link silence, faster than the link's own stale verdict. */
+  #watchEnds() {
     if (!this.flows.size) return;
     const g = this.#group;
     const ends = new Set();
@@ -43,8 +43,8 @@ export class DataRelay {
       const link = g.links.get(id);
       if (!link || link.remoteBackground) continue;
       const silence = link.silence;
-      const level = silence >= g.config.relayHopDownMs ? "stale" : silence >= g.config.SLOW_CONNECTION_MS ? "slow" : "ok";
-      this.hopChanged(id, level);
+      const level = silence >= g.config.relayPeerDownMs ? "stale" : silence >= g.config.SLOW_CONNECTION_MS ? "slow" : "ok";
+      this.endChanged(id, level);
     }
   }
 
@@ -171,17 +171,17 @@ export class DataRelay {
   }
 
   /**
-   * A hop of a relayed flow changed state: tell the far end (plan section 6.2).
+   * The link to an end of a relayed flow changed state: tell the far end (plan section 6.2).
    * @param {string} peerId the neighbor whose link changed
    * @param {"ok"|"slow"|"stale"} verdict
    */
-  hopChanged(peerId, verdict) {
-    const prev = this.#hopLevel.get(peerId) ?? "ok";
+  endChanged(peerId, verdict) {
+    const prev = this.#endLevel.get(peerId) ?? "ok";
     if (verdict === prev || (verdict === "slow" && prev === "stale")) {
-      if (verdict === "ok") this.#hopLevel.set(peerId, "ok");
+      if (verdict === "ok") this.#endLevel.set(peerId, "ok");
       return;
     }
-    this.#hopLevel.set(peerId, verdict);
+    this.#endLevel.set(peerId, verdict);
     if (verdict === "ok") return;
     const g = this.#group;
     const t = verdict === "stale" ? "route-down" : "route-slow";

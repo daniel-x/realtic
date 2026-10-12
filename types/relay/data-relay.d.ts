@@ -3,7 +3,7 @@ export function connects(f: any, a: any, b: any): boolean;
 /**
  * Relay side of peer relaying (plan section 7.2, 9.3, decision D21): accepts or rejects relay
  * requests, forwards envelopes of accepted flows between its two neighbors, rewrites the index
- * fields, and reports hop failures to the far end with `route-down` / `route-slow`.
+ * fields, and reports a failed link to one end to the other end with `route-down` / `route-slow`.
  */
 export class DataRelay {
     static key(origin: any, target: any, flow: any): string;
@@ -55,11 +55,11 @@ export class DataRelay {
      */
     forward(link: import("../link/direct-link.js").DirectLink, src: string, dst: string, bytes: Uint8Array, e: import("../transport/framing.js").Envelope, key: string): void;
     /**
-     * A hop of a relayed flow changed state: tell the far end (plan section 6.2).
+     * The link to an end of a relayed flow changed state: tell the far end (plan section 6.2).
      * @param {string} peerId the neighbor whose link changed
      * @param {"ok"|"slow"|"stale"} verdict
      */
-    hopChanged(peerId: string, verdict: "ok" | "slow" | "stale"): void;
+    endChanged(peerId: string, verdict: "ok" | "slow" | "stale"): void;
     /** Drops all flows involving `peerId`. */
     peerGone(peerId: any): void;
     close(): void;

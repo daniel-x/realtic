@@ -134,4 +134,4 @@ All values in `DEFAULTS` (`src/config.js`) can be overridden per group. The most
 | `logCapacity`, `logLevel`, `logConsole`, `logRedact` | 1024, "info", false, false | logging |
 | `shareLogWithPeers` | false | answer `requestLog()` |
 | `stableTracks` | false | one generated track per publication (Chromium) |
-| `relayHopDownMs` | 3000 | a relay reports a hop as down after this silence |
+| `relayPeerDownMs` | 3000 | a relay reports a directly connected peer as down after this silence |

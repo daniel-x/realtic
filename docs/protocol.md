@@ -78,8 +78,8 @@ JSON `{ t, ...fields }`:
 | `relay-open` | `flow, origin, role, kinds` | relay tells the target end about a flow |
 | `relay-close` | `flow, origin` | either end or the relay ends a flow |
 | `standby-activate` | `flow, origin` | the standby becomes the active relay |
-| `route-down` | `origin, target` | relay: the hop to `origin` is dead |
-| `route-slow` | `origin, target` | relay: the hop to `origin` is slow |
+| `route-down` | `origin, target` | relay: its link to `origin` is dead |
+| `route-slow` | `origin, target` | relay: its link to `origin` is slow |
 | `route-use` | `kind: "direct"` | the route owner switched the pair to the direct link |
 | `bg`, `fg` | none | the sender's page went to the background or came back |
 | `transport-open` | `id, mode` | impolite side created a partial reliability transport |
