@@ -24,11 +24,12 @@ function iceServersWithoutCredentials(servers) {
  * Builds the JSON-serializable diagnostic report of a group (plan section 12.1): log entries,
  * versions, user agent, config without credentials, peer, link and route states, the last
  * candidate pair dumps, and a getStats() snapshot. Sends nothing anywhere.
- * @param {import("../group.js").RealticGroup} group
+ * @param {import("../peer-group.js").ReatPeerGroup} group
  */
 export async function diagnosticReport(group) {
   const stats = {};
-  for (const [id, link] of group.links) {
+  for (const link of group.directLinks()) {
+    const id = link.remoteId;
     if (!link.pc) continue;
     try {
       const s = await readStats(link.pc);
@@ -45,7 +46,7 @@ export async function diagnosticReport(group) {
     config: plainConfig(group.config),
     iceServers: iceServersWithoutCredentials(group.iceServers),
     peers: [...group.connections.values()].map((p) => ({ id: p.id, state: p.state, reason: p.reason, route: p.route, lastError: p.lastError, hint: p.hint })),
-    links: [...group.links.values()].map((l) => ({ peer: l.remoteId, state: l.state, reason: l.reason, session: l.session, liveness: l.liveness, metrics: l.metrics, lastError: l.lastError, hint: l.hint, lastDump: l.lastDump })),
+    links: [...group.directLinks()].map((l) => ({ peer: l.remoteId, state: l.state, reason: l.reason, session: l.session, liveness: l.liveness, metrics: l.metrics, lastError: l.lastError, hint: l.hint, lastDump: l.lastDump })),
     routing: group.getStats(),
     media: group.media.streams.list(),
     stats,

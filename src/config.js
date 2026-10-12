@@ -1,6 +1,6 @@
 /**
  * Default configuration. Every timing and tunable of the library lives here and can be
- * overridden per group through `new RealticGroup({ config })`. Timing values follow doc §3.5.
+ * overridden per group through `new ReatPeerGroup({ config })`. Timing values follow doc §3.5.
  */
 export const DEFAULTS = Object.freeze({
   /** Sender sends a 1 byte beat on `ctl` after this long without sending anything. */

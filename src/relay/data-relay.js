@@ -40,7 +40,7 @@ export class DataRelay {
     const ends = new Set();
     for (const f of this.flows.values()) ends.add(f.origin).add(f.target);
     for (const id of ends) {
-      const link = g.links.get(id);
+      const link = g.direct(id);
       if (!link || link.remoteBackground) continue;
       const silence = link.silence;
       const level = silence >= g.config.relayPeerDownMs ? "stale" : silence >= g.config.SLOW_CONNECTION_MS ? "slow" : "ok";
@@ -87,7 +87,7 @@ export class DataRelay {
     if (!g.connections.has(msg.target) || !g.connections.has(origin)) return reject("not a member");
     if (!g.helloDone(msg.target) || !g.helloDone(origin)) return reject("no hello");
     if (g.config.allowRelay && !g.config.allowRelay(origin, msg.target)) return reject("not allowed");
-    const next = g.links.get(msg.target);
+    const next = g.direct(msg.target);
     if (!next?.usable) return reject("no link to target");
     const key = DataRelay.key(origin, msg.target, msg.flow);
     if (!this.flows.has(key)) {
@@ -117,7 +117,7 @@ export class DataRelay {
       if (f.flow !== msg.flow || (f.origin !== link.remoteId && f.target !== link.remoteId)) continue;
       this.flows.delete(key);
       const other = otherEnd(f, link.remoteId);
-      this.#group.links.get(other)?.sendCtl({ t: "relay-close", flow: f.flow, origin: f.origin });
+      this.#group.direct(other)?.sendCtl({ t: "relay-close", flow: f.flow, origin: f.origin });
       this.l.info("relay flow closed", { flow: f.flow, origin: f.origin, target: f.target, by: link.remoteId });
       this.#group.mediaChanged();
     }
@@ -132,7 +132,7 @@ export class DataRelay {
     for (const f of this.flows.values()) {
       if (f.flow !== msg.flow || f.origin !== link.remoteId) continue;
       f.role = "active";
-      this.#group.links.get(f.target)?.sendCtl({ t: "standby-activate", flow: f.flow, origin: f.origin });
+      this.#group.direct(f.target)?.sendCtl({ t: "standby-activate", flow: f.flow, origin: f.origin });
       this.l.info("standby activated", { flow: f.flow, origin: f.origin, target: f.target });
       this.#group.mediaChanged();
     }
@@ -153,7 +153,7 @@ export class DataRelay {
       this.l.debug("dropped envelope of unaccepted flow", { src, dst, via: link.remoteId });
       return;
     }
-    const next = g.links.get(dst);
+    const next = g.direct(dst);
     if (!next?.usable) return;
     const copy = bytes.slice();
     rewriteIdx(copy, g.localIndex(next, src), 1);
@@ -190,7 +190,7 @@ export class DataRelay {
       const other = otherEnd(f, peerId);
       if (!other || told.has(other)) continue;
       told.add(other);
-      g.links.get(other)?.sendCtl({ t, origin: peerId, target: other });
+      g.direct(other)?.sendCtl({ t, origin: peerId, target: other });
       this.l.info(`${t} sent`, { dead: peerId, to: other });
     }
   }
@@ -201,8 +201,8 @@ export class DataRelay {
       if (f.origin !== peerId && f.target !== peerId) continue;
       this.flows.delete(key);
       const other = otherEnd(f, peerId);
-      this.#group.links.get(other)?.sendCtl({ t: "route-down", origin: peerId, target: other });
-      this.#group.links.get(other)?.sendCtl({ t: "relay-close", flow: f.flow, origin: f.origin });
+      this.#group.direct(other)?.sendCtl({ t: "route-down", origin: peerId, target: other });
+      this.#group.direct(other)?.sendCtl({ t: "relay-close", flow: f.flow, origin: f.origin });
     }
   }
 

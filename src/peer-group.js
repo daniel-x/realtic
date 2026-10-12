@@ -8,7 +8,7 @@ import { Dedupe } from "./signaling/queue.js";
 import { SignalingRouter, RELAYABLE } from "./signaling/router.js";
 import { DirectLink } from "./link/direct-link.js";
 import { NetworkWatcher } from "./link/network.js";
-import { RealticConnection } from "./connection.js";
+import { ReatPeerConnection } from "./peer-connection.js";
 import { decode } from "./transport/framing.js";
 import { generateKeyPair, exportPublic, derivePairKey } from "./crypto/e2e.js";
 import { MediaManager } from "./media/media.js";
@@ -26,14 +26,15 @@ const MESH_ONLY_REJECT = new Set(["hello", "offer", "answer"]);
  * A group of peers in a mesh (plan section 3). The app owns membership: it calls `addPeer` and
  * `removePeer`, or enables `autoPeers` to follow the adapter's presence events.
  *
- * Events: `connection` (RealticConnection) when a connection is created, `peerleft`
- * (RealticConnection, reason), `presence` ({type, peer}).
+ * Events: `connection` (ReatPeerConnection) when a connection is created, `peerleft`
+ * (ReatPeerConnection, reason), `presence` ({type, peer}).
  */
-export class RealticGroup extends Emitter {
-  /** @type {Map<string, RealticConnection>} */
+export class ReatPeerGroup extends Emitter {
+  /**
+   * One connection per known peer, also when it could not be opened.
+   * @type {Map<string, ReatPeerConnection>}
+   */
   connections = new Map();
-  /** @type {Map<string, DirectLink>} */
-  links = new Map();
   #pendingHellos = new Map();
   #heldSignals = new Map();
   #helloTimers = new Map();
@@ -79,7 +80,7 @@ export class RealticGroup extends Emitter {
     this.router = new SignalingRouter({
       selfId,
       adapter: () => this.signaling,
-      link: (id) => this.links.get(id),
+      link: (id) => this.direct(id),
       relayFor: (target) => this.routing.relayFor(target),
       log: this.l,
       hooks: this.hooks,
@@ -136,10 +137,24 @@ export class RealticGroup extends Emitter {
     return this.iceServers.some(isTurnServer);
   }
 
+  /**
+   * The direct link of the connection to `peerId`, or undefined while there is none.
+   * @param {string} peerId
+   * @returns {DirectLink | undefined}
+   */
+  direct(peerId) {
+    return this.connections.get(peerId)?.direct ?? undefined;
+  }
+
+  /** The direct links of all connections that have one. */
+  *directLinks() {
+    for (const conn of this.connections.values()) if (conn.direct) yield conn.direct;
+  }
+
   // Membership ----------------------------------------------------------------------------------
 
   /**
-   * Adds a peer to the group and starts connecting to it. Returns the stable RealticConnection.
+   * Adds a peer to the group and starts connecting to it. Returns the stable ReatPeerConnection.
    * @param {string} peerId
    */
   addPeer(peerId) {
@@ -147,7 +162,7 @@ export class RealticGroup extends Emitter {
     if (peerId === this.selfId) throw new Error("cannot add self");
     let peer = this.connections.get(peerId);
     if (peer) return peer;
-    peer = new RealticConnection(this, peerId);
+    peer = new ReatPeerConnection(this, peerId);
     peer.onListenerError = this.onListenerError;
     this.connections.set(peerId, peer);
     this.log.write("info", "group", "peer added", undefined, { peer: peerId });
@@ -175,18 +190,17 @@ export class RealticGroup extends Emitter {
 
   #dropPeer(peerId, reason) {
     const peer = this.connections.get(peerId);
+    peer?.setState("closing", reason);
     this.connections.delete(peerId);
     this.#helloDone.delete(peerId);
     this.#pendingHellos.delete(peerId);
     this.#heldSignals.delete(peerId);
     this.#stopHelloRetry(peerId);
     this.routing.peerGone(peerId);
-    const link = this.links.get(peerId);
-    if (link) {
-      this.links.delete(peerId);
+    if (peer?.direct) {
       this.#indexTables.delete(peerId);
       this.media.resetLink(peerId);
-      link.close(reason);
+      peer.closeDirect(reason);
     }
     this.media.streams.dropOrigin(peerId);
     if (peer) {
@@ -270,11 +284,11 @@ export class RealticGroup extends Emitter {
   }
 
   #ensureLink(peerId) {
-    let link = this.links.get(peerId);
-    if (link) return link;
-    link = new DirectLink(this.linkCtx, peerId);
+    const conn = this.connections.get(peerId);
+    if (conn.direct) return conn.direct;
+    const link = new DirectLink(this.linkCtx, peerId);
     link.onListenerError = this.onListenerError;
-    this.links.set(peerId, link);
+    conn.direct = link;
     this.#indexTables.set(peerId, newIndexTable(this.selfId, peerId));
     link.on("state", (state, reason) => this.routing.linkState(link, state, reason));
     link.on("ctl", (msg) => this.#onLinkCtl(link, msg));
@@ -316,7 +330,7 @@ export class RealticGroup extends Emitter {
       if (this.connections.has(from)) this.#dropPeer(from, msg.reason === "leave" ? "left" : msg.reason ?? "left");
       return;
     }
-    const link = this.links.get(from);
+    const link = this.direct(from);
     if (!link) {
       let held = this.#heldSignals.get(from);
       if (!held) this.#heldSignals.set(from, (held = []));
@@ -342,7 +356,7 @@ export class RealticGroup extends Emitter {
       this.log.write("warn", "relay", "refused to forward signal", { t: msg.t, from: msg.from, to: msg.to });
       return;
     }
-    const next = this.links.get(msg.to);
+    const next = this.direct(msg.to);
     if (!next?.ctlOpen || !this.#helloDone.has(msg.to) || !this.#helloDone.has(msg.from)) return;
     this.log.write("debug", "relay", "forward signal", { t: msg.t, from: msg.from, to: msg.to });
     next.sendCtl({ t: "sig", msg });
@@ -454,7 +468,7 @@ export class RealticGroup extends Emitter {
 
   /** @internal re-plans media on all open links */
   mediaChanged() {
-    for (const link of this.links.values()) if (link.ctlOpen) this.media.sync(link);
+    for (const link of this.directLinks()) if (link.ctlOpen) this.media.sync(link);
   }
 
   /** True when this side wants `origin`'s track of `kind` and `tag`. */
@@ -515,7 +529,7 @@ export class RealticGroup extends Emitter {
 
   #onVisibility(hidden) {
     this.log.write("info", "group", hidden ? "page hidden" : "page visible");
-    for (const link of this.links.values()) if (link.ctlOpen) link.setBackground(hidden);
+    for (const link of this.directLinks()) if (link.ctlOpen) link.setBackground(hidden);
     for (const peer of this.connections.values()) {
       if (peer.routeInfo?.kind === "relay") peer.session.sendControl({ t: hidden ? "bg" : "fg" });
     }
@@ -528,12 +542,12 @@ export class RealticGroup extends Emitter {
   /** Runs a liveness check on all links at once; restarts ICE on slow or stale ones. */
   checkLinks(reason) {
     this.log.write("info", "group", "checking links", { reason });
-    for (const link of this.links.values()) link.checkNow(reason);
+    for (const link of this.directLinks()) link.checkNow(reason);
   }
 
   /** ICE restart on every live direct link (decision D15). */
   restartAll(reason) {
-    for (const link of this.links.values()) if (link.ctlOpen) link.iceRestart(reason);
+    for (const link of this.directLinks()) if (link.ctlOpen) link.iceRestart(reason);
   }
 
   /** Sends `bye` to all peers via mesh and signaling. Usable from `pagehide`. */
@@ -541,7 +555,7 @@ export class RealticGroup extends Emitter {
     if (this.#closed) return;
     for (const id of this.connections.keys()) {
       const msg = { t: "bye", reason: "leave" };
-      const link = this.links.get(id);
+      const link = this.direct(id);
       if (link?.ctlOpen) link.sendCtl({ t: "sig", msg: { ...msg, from: this.selfId, to: id, id: randomId(12) } });
       this.router.beacon(id, msg);
     }
@@ -563,13 +577,11 @@ export class RealticGroup extends Emitter {
     return diagnosticReport(this);
   }
 
-  /** Closes all links and peers. */
+  /** Closes all connections. */
   close(reason = "closed") {
     if (this.#closed) return;
     this.log.write("info", "group", "group closed", { reason });
     for (const id of [...this.connections.keys()]) this.#dropPeer(id, reason);
-    for (const link of this.links.values()) link.close(reason);
-    this.links.clear();
     this.#closed = true;
     this.clock.clearInterval(this.#tickTimer);
     for (const t of this.#helloTimers.values()) this.clock.clearInterval(t);

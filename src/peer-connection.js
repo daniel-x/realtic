@@ -8,14 +8,17 @@ import { LivenessMonitor } from "./liveness/monitor.js";
 const LOG_PART_BYTES = 16384;
 
 /**
- * End to end connection to one remote peer, direct or through a relay (plan section 3). It survives link rebuilds, ICE restarts and
- * route switches, so app state bound to it never has to be rebuilt (doc §3.8).
+ * The connection to one other peer of the group, kept up as long as the peer is known (plan
+ * section 3). It is direct, wrapping the RTCPeerConnection of its direct link, or routed through a
+ * relay, using the relay's direct link. Finding routes, keeping standby routes warm and switching
+ * routes happen inside; the object survives link rebuilds, ICE restarts and route switches, so app
+ * state bound to it never has to be rebuilt (doc §3.8).
  *
- * Events: `statechange` (state, reason), `routechange` (route), `channel` (RealticChannel),
+ * Events: `statechange` (state, reason), `routechange` (route), `channel` (ReatChannel),
  * `track` ({track, stream, tag, origin, kind}), `trackreplaced` ({track, oldTrack, stream, tag}),
  * `trackended` ({track, stream, tag}).
  */
-export class RealticConnection extends Emitter {
+export class ReatPeerConnection extends Emitter {
   #state = "connecting";
   #reason = "";
   #group;
@@ -29,6 +32,11 @@ export class RealticConnection extends Emitter {
   #logParts = new Map();
   #beatTimer = null;
 
+  /**
+   * The direct link to this peer, owned by this connection; null until hello completed.
+   * @type {import("./link/direct-link.js").DirectLink | null}
+   */
+  direct = null;
   /** Remote hello (protocol, keys, capabilities), once received. */
   remote = null;
   /** End to end AES-GCM key for relayed data. */
@@ -60,7 +68,7 @@ export class RealticConnection extends Emitter {
     this.#e2eMonitor = LivenessMonitor.fromConfig(group.config, () => group.clock.now(), (state, silence) => group.routing.onE2ELiveness(this, state, silence));
   }
 
-  /** `connecting` | `connected` | `slow` | `reconnecting` | `unreachable` | `closed` */
+  /** `connecting` | `connected` | `slow` | `reconnecting` | `unreachable` | `closing` | `closed` */
   get state() {
     return this.#state;
   }
@@ -75,10 +83,10 @@ export class RealticConnection extends Emitter {
     const r = this.#route;
     if (!r) return null;
     if (r.kind === "direct") {
-      const link = this.#group.links.get(this.id);
+      const link = this.direct;
       return { kind: "direct", via: null, candidateType: link?.viaTurn ? "relay" : link?.metrics.candidateType ?? "host" };
     }
-    return { kind: "relay", via: r.via, candidateType: this.#group.links.get(r.via)?.metrics.candidateType ?? "host" };
+    return { kind: "relay", via: r.via, candidateType: this.#group.direct(r.via)?.metrics.candidateType ?? "host" };
   }
 
   /** Internal route descriptor. */
@@ -86,9 +94,9 @@ export class RealticConnection extends Emitter {
     return this.#route;
   }
 
-  /** The direct link's RTCPeerConnection, for advanced use. */
+  /** The current RTCPeerConnection of the direct link, or null without one; for advanced use. */
   get rtcPeerConnection() {
-    return this.#group.links.get(this.id)?.pc ?? null;
+    return this.direct?.pc ?? null;
   }
 
   /** End to end liveness monitor of relayed routes. */
@@ -102,7 +110,7 @@ export class RealticConnection extends Emitter {
    * @param {{ordered?: boolean, maxRetransmits?: number, maxPacketLifeTime?: number, protocol?: string}} [init]
    */
   createChannel(label, init) {
-    if (this.#state === "closed") throw new DOMException("peer is closed", "InvalidStateError");
+    if (this.#state === "closing" || this.#state === "closed") throw new DOMException("connection is closed", "InvalidStateError");
     return this.session.createChannel(label, init);
   }
 
@@ -242,8 +250,7 @@ export class RealticConnection extends Emitter {
   }
 
   #sendOn(route, e, key) {
-    const viaId = route.kind === "direct" ? this.id : route.via;
-    const link = this.#group.links.get(viaId);
+    const link = route.kind === "direct" ? this.direct : this.#group.direct(route.via);
     if (!link || !link.usable) return false;
     const encrypted = route.kind === "relay";
     if (encrypted && !this.pairKey) return false;
@@ -329,6 +336,7 @@ export class RealticConnection extends Emitter {
   setState(state, reason) {
     if (state === this.#state) return;
     if (this.#state === "closed") return;
+    if (this.#state === "closing" && state !== "closed") return;
     const prev = this.#state;
     this.#state = state;
     this.#reason = reason;
@@ -347,12 +355,28 @@ export class RealticConnection extends Emitter {
     return this.#everConnected;
   }
 
-  /** Closes the peer object. */
+  /**
+   * Closes the direct link and drops it.
+   * @param {string} reason
+   */
+  closeDirect(reason) {
+    const link = this.direct;
+    this.direct = null;
+    link?.close(reason);
+  }
+
+  /**
+   * Closes the connection: `closing` before anything is shut down, `closed` at the end.
+   * @param {string} [reason]
+   */
   close(reason = "closed") {
-    this.setState("closed", reason);
+    if (this.#state === "closed") return;
+    this.setState("closing", reason);
+    this.closeDirect(reason);
     this.#stopBeats();
     this.session.close();
     for (const [id] of this.#logRequests) this.#finishLog(id, null, new Error("peer closed"));
+    this.setState("closed", reason);
   }
 }
 

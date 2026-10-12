@@ -3,7 +3,7 @@
 ## Collect Both Logs
 
 realtic records every state change, signaling message, liveness verdict, ICE restart, relay
-decision and candidate pair dump in a ring buffer from the moment the `RealticGroup` is created. A
+decision and candidate pair dump in a ring buffer from the moment the `ReatPeerGroup` is created. A
 connection has two ends; read both logs before concluding anything.
 
 ```js
@@ -16,7 +16,7 @@ group.log.on("entry", (e) => forwardToServer(e));       // live, e.g. behind ?lo
 Timestamps are UTC, `yyyy-MM-dd_HH-mm-ss.SSS`, the same format on every device, so two logs can be
 read side by side. `config.logRedact` replaces IP addresses with placeholders.
 
-## Peer States
+## Connection States
 
 | State | Meaning |
 | ----- | ------- |
@@ -24,7 +24,8 @@ read side by side. `config.logRedact` replaces IP addresses with placeholders.
 | `connected` | traffic arrives in time on the current route |
 | `slow` | no traffic for more than `SLOW_CONNECTION_MS` (1 s) |
 | `reconnecting` | the route went stale (5 s); recovery runs |
-| `unreachable` | ICE restarts and rebuilds failed and no relay route exists; `peer.lastError` and `peer.hint` say why; a background re-probe keeps trying |
+| `unreachable` | ICE restarts and rebuilds failed and no relay route exists; `connection.lastError` and `connection.hint` say why; a background re-probe keeps trying |
+| `closing` | the peer is leaving or being removed; emitted before anything is shut down |
 | `closed` | the peer left or was removed |
 
 ## Hints

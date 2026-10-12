@@ -3,7 +3,7 @@
  * user channels, acks and credits. Route-agnostic: envelopes go out through `transmit` and come
  * in through `receive`.
  *
- * Events: `channel` (RealticChannel), `control` (msg) for control messages other than channel
+ * Events: `channel` (ReatChannel), `control` (msg) for control messages other than channel
  * setup, `beat`.
  */
 export class Session extends Emitter {
@@ -110,17 +110,17 @@ export class Session extends Emitter {
         maxRetransmits?: number;
         maxPacketLifeTime?: number;
         protocol?: string;
-    }): RealticChannel;
+    }): ReatChannel;
     /**
      * Sends a message on the end to end control channel.
      * @param {object} msg
      */
     sendControl(msg: object): void;
-    /** @internal used by RealticChannel */
+    /** @internal used by ReatChannel */
     sendUser(id: any, payload: any): void;
-    /** @internal used by RealticChannel */
+    /** @internal used by ReatChannel */
     bufferedAmount(id: any): any;
-    /** @internal used by RealticChannel */
+    /** @internal used by ReatChannel */
     closeChannel(id: any): void;
     /**
      * Handles one complete (reassembled, decrypted) envelope.
@@ -147,4 +147,4 @@ export class Session extends Emitter {
     #private;
 }
 import { Emitter } from "../util/emitter.js";
-import { RealticChannel } from "./channel.js";
+import { ReatChannel } from "./channel.js";

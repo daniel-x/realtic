@@ -1,5 +1,5 @@
 import { ChannelSender, ChannelReceiver } from "./reliability.js";
-import { RealticChannel } from "./channel.js";
+import { ReatChannel } from "./channel.js";
 import { TYPE } from "../transport/framing.js";
 import { modeKey, REL, UNREL } from "../transport/hop-channels.js";
 import { Emitter } from "../util/emitter.js";
@@ -13,7 +13,7 @@ const decoder = new TextDecoder();
  * user channels, acks and credits. Route-agnostic: envelopes go out through `transmit` and come
  * in through `receive`.
  *
- * Events: `channel` (RealticChannel), `control` (msg) for control messages other than channel
+ * Events: `channel` (ReatChannel), `control` (msg) for control messages other than channel
  * setup, `beat`.
  */
 export class Session extends Emitter {
@@ -78,7 +78,7 @@ export class Session extends Emitter {
     const id = this.#nextId;
     this.#nextId += 2;
     if (id > 0xffff) throw new RangeError("channel ids exhausted");
-    const channel = new RealticChannel(this, id, { label, ...init });
+    const channel = new ReatChannel(this, id, { label, ...init });
     this.#channels.set(id, channel);
     this.#setup(id, modeOf(channel));
     this.sendControl({
@@ -102,17 +102,17 @@ export class Session extends Emitter {
     this.#senders.get(CONTROL).send(encoder.encode(JSON.stringify(msg)));
   }
 
-  /** @internal used by RealticChannel */
+  /** @internal used by ReatChannel */
   sendUser(id, payload) {
     this.#senders.get(id).send(payload);
   }
 
-  /** @internal used by RealticChannel */
+  /** @internal used by ReatChannel */
   bufferedAmount(id) {
     return this.#senders.get(id)?.queuedBytes ?? 0;
   }
 
-  /** @internal used by RealticChannel */
+  /** @internal used by ReatChannel */
   closeChannel(id) {
     const sender = this.#senders.get(id);
     const finish = () => {
@@ -148,7 +148,7 @@ export class Session extends Emitter {
     switch (msg.t) {
       case "ch-open": {
         if (this.#channels.has(msg.id) || typeof msg.id !== "number") return;
-        const channel = new RealticChannel(this, msg.id, {
+        const channel = new ReatChannel(this, msg.id, {
           label: String(msg.label ?? ""),
           protocol: msg.protocol,
           ordered: msg.ordered !== false,

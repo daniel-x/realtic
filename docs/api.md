@@ -1,13 +1,13 @@
 # realtic API
 
 ```js
-import { RealticGroup } from "realtic";
+import { ReatPeerGroup } from "realtic";
 ```
 
-## RealticGroup
+## ReatPeerGroup
 
 ```js
-const group = new RealticGroup({
+const group = new ReatPeerGroup({
   selfId,          // optional, generated when absent; use a fresh id per page load
   signaling,       // { url, group, type? } of a reference server, or an adapter (see below)
   iceServers,      // passed to RTCPeerConnection (TURN handling: config.turnMode)
@@ -18,9 +18,9 @@ const group = new RealticGroup({
 
 | Member | Description |
 | ------ | ----------- |
-| `addPeer(id)` | adds a peer and starts connecting; returns the stable `RealticConnection` |
-| `removePeer(id)` | sends `bye`, closes the link |
-| `connections` | `Map<id, RealticConnection>` |
+| `addPeer(id)` | adds a peer and starts connecting; returns the stable `ReatPeerConnection` |
+| `removePeer(id)` | sends `bye`, closes the connection |
+| `connections` | `Map<id, ReatPeerConnection>`, one per known peer, also when it could not be opened |
 | `publish(track, { tag, to })` | publishes a local track to `"all"` or a list of peer ids; returns a `Publication` |
 | `setSubscription(origin, { audio, video, tags })` | which media of `origin` this side wants; unwanted flows stop at their source |
 | `leave()` | sends `bye` over the mesh and the signaling server (beacon when supported) and closes; called on `pagehide` automatically |
@@ -31,33 +31,37 @@ const group = new RealticGroup({
 | `log` | the ring buffer logger, see below |
 | `ready` | promise, resolves when keys and capabilities are collected |
 
-Events: `connection` (RealticConnection), `peerleft` (RealticConnection, reason), `presence` ({ type,
-peer }).
+Events: `connection` (ReatPeerConnection), `peerleft` (ReatPeerConnection, reason), `presence`
+({ type, peer }).
 
-## RealticConnection
+## ReatPeerConnection
+
+The connection to one other peer of the group. It is direct, wrapping an `RTCPeerConnection`, or
+routes through a relay peer. Finding routes, keeping standby routes warm and switching routes
+happen inside it.
 
 | Member | Description |
 | ------ | ----------- |
 | `id` | remote peer id |
-| `state` | `connecting`, `connected`, `slow`, `reconnecting`, `unreachable`, `closed` |
+| `state` | `connecting`, `connected`, `slow`, `reconnecting`, `unreachable`, `closing`, `closed` |
 | `reason` | reason of the last state change |
 | `route` | `{ kind: "direct" \| "relay", via, candidateType: "host" \| "srflx" \| "prflx" \| "relay" }` or null |
 | `lastError`, `hint` | failure details; hints in `HINT_TEXT` |
 | `createChannel(label, init)` | end to end data channel, `init`: `ordered`, `maxRetransmits`, `maxPacketLifeTime`, `protocol` |
 | `requestLog()` | promise of the remote side's diagnostic report (needs its `shareLogWithPeers`) |
-| `rtcPeerConnection` | the direct link's current `RTCPeerConnection`, for advanced use |
+| `rtcPeerConnection` | the current `RTCPeerConnection` to this peer, null without a direct one; for advanced use |
 
-Events: `statechange` (state, reason), `routechange` (route), `channel` (RealticChannel),
+Events: `statechange` (state, reason), `routechange` (route), `channel` (ReatChannel),
 `track` ({ track, stream, tag, kind, origin, pub }), `trackreplaced` ({ track, oldTrack, stream,
 tag }), `trackended` ({ track, stream, tag }).
 
 The `stream` of a `track` event is one `MediaStream` per publication. It stays the same across
 route changes, ICE restarts and rebuilds; the library swaps the track inside it.
 
-The `RealticConnection` object stays the same for the life of the remote page, so UI bound to it
+The `ReatPeerConnection` object stays the same for the life of the remote page, so UI bound to it
 never has to be rebuilt.
 
-## RealticChannel
+## ReatChannel
 
 `RTCDataChannel`-like: `send(data)` (string, ArrayBuffer, ArrayBufferView), `close()`,
 `readyState`, `bufferedAmount`, `bufferedAmountLowThreshold`, `label`, `protocol`, `id`,
@@ -100,7 +104,7 @@ entries.
 
 ## Signaling Adapters
 
-`RealticGroup({ signaling })` accepts settings `{ url, group, type, fastMs, idleMs }` and creates the
+`ReatPeerGroup({ signaling })` accepts settings `{ url, group, type, fastMs, idleMs }` and creates the
 adapter with `createSignaling(settings, selfId)`. `type` defaults to `"websocket"` for `ws:` and
 `wss:` URLs and to `"polling"` otherwise.
 

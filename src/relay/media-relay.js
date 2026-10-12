@@ -75,7 +75,7 @@ export class MediaRelay {
     m.set(msg.origin, sub);
     this.l.info("remote subscription", { subscriber, origin: msg.origin, via: link.remoteId, ...sub });
     if (msg.origin !== g.selfId) {
-      const toOrigin = g.links.get(msg.origin);
+      const toOrigin = g.direct(msg.origin);
       if (toOrigin?.ctlOpen && this.#routing.relay.carries(subscriber, msg.origin)) toOrigin.sendCtl({ ...msg, for: subscriber });
     }
     g.mediaChanged();
@@ -90,7 +90,7 @@ export class MediaRelay {
     const targets = new Set([origin]);
     for (const f of this.#routing.pairs.get(origin)?.flows.values() ?? []) if (f.state === "open") targets.add(f.via);
     for (const id of targets) {
-      const link = g.links.get(id);
+      const link = g.direct(id);
       if (link?.ctlOpen) link.sendCtl(msg);
     }
   }
@@ -272,7 +272,7 @@ export class MediaRelay {
         m.get(pub).push(bps);
       }
     }
-    const cpu = [...g.links.values()].some((l) => l.metrics.cpuLimited);
+    const cpu = [...g.directLinks()].some((l) => l.metrics.cpuLimited);
     let changed = false;
     for (const [origin, pubs] of byOrigin) {
       const budgets = new Map();
@@ -283,7 +283,7 @@ export class MediaRelay {
       let reporter = this.#reporters.get(origin);
       if (!reporter) this.#reporters.set(origin, (reporter = new BudgetReporter(g.clock, g.config.bweReportIntervalMs, g.config.bweDropReport)));
       if (reporter.due(budgets)) {
-        g.links.get(origin)?.sendCtl({
+        g.direct(origin)?.sendCtl({
           t: "bwe",
           flows: [...budgets].map(([pub, bps]) => ({ origin, pub, bps })),
           decode: g.localCaps?.decode ?? {},

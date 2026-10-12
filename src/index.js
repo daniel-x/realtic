@@ -1,6 +1,6 @@
-export { RealticGroup } from "./group.js";
-export { RealticConnection } from "./connection.js";
-export { RealticChannel } from "./channel/channel.js";
+export { ReatPeerGroup } from "./peer-group.js";
+export { ReatPeerConnection } from "./peer-connection.js";
+export { ReatChannel } from "./channel/channel.js";
 export { Publication } from "./media/media.js";
 export { attachMedia, TRACK_SWAPPED } from "./media/attach.js";
 export { MemoryHub } from "./signaling/adapter.js";

@@ -1,17 +1,25 @@
 /**
- * End to end connection to one remote peer, direct or through a relay (plan section 3). It survives link rebuilds, ICE restarts and
- * route switches, so app state bound to it never has to be rebuilt (doc §3.8).
+ * The connection to one other peer of the group, kept up as long as the peer is known (plan
+ * section 3). It is direct, wrapping the RTCPeerConnection of its direct link, or routed through a
+ * relay, using the relay's direct link. Finding routes, keeping standby routes warm and switching
+ * routes happen inside; the object survives link rebuilds, ICE restarts and route switches, so app
+ * state bound to it never has to be rebuilt (doc §3.8).
  *
- * Events: `statechange` (state, reason), `routechange` (route), `channel` (RealticChannel),
+ * Events: `statechange` (state, reason), `routechange` (route), `channel` (ReatChannel),
  * `track` ({track, stream, tag, origin, kind}), `trackreplaced` ({track, oldTrack, stream, tag}),
  * `trackended` ({track, stream, tag}).
  */
-export class RealticConnection extends Emitter {
+export class ReatPeerConnection extends Emitter {
     /**
      * @param {object} group internal group interface
      * @param {string} id
      */
     constructor(group: object, id: string);
+    /**
+     * The direct link to this peer, owned by this connection; null until hello completed.
+     * @type {import("./link/direct-link.js").DirectLink | null}
+     */
+    direct: import("./link/direct-link.js").DirectLink | null;
     /** Remote hello (protocol, keys, capabilities), once received. */
     remote: any;
     /** End to end AES-GCM key for relayed data. */
@@ -23,7 +31,7 @@ export class RealticConnection extends Emitter {
     impolite: boolean;
     l: any;
     session: Session;
-    /** `connecting` | `connected` | `slow` | `reconnecting` | `unreachable` | `closed` */
+    /** `connecting` | `connected` | `slow` | `reconnecting` | `unreachable` | `closing` | `closed` */
     get state(): string;
     /** Reason of the last state change. */
     get reason(): string;
@@ -35,8 +43,8 @@ export class RealticConnection extends Emitter {
     };
     /** Internal route descriptor. */
     get routeInfo(): any;
-    /** The direct link's RTCPeerConnection, for advanced use. */
-    get rtcPeerConnection(): any;
+    /** The current RTCPeerConnection of the direct link, or null without one; for advanced use. */
+    get rtcPeerConnection(): RTCPeerConnection;
     /** End to end liveness monitor of relayed routes. */
     get e2e(): LivenessMonitor;
     /**
@@ -49,7 +57,7 @@ export class RealticConnection extends Emitter {
         maxRetransmits?: number;
         maxPacketLifeTime?: number;
         protocol?: string;
-    }): import("./index.js").RealticChannel;
+    }): import("./index.js").ReatChannel;
     /**
      * Fetches the remote side's diagnostic report. Rejects when the remote app did not enable
      * `shareLogWithPeers`.
@@ -94,7 +102,15 @@ export class RealticConnection extends Emitter {
     setState(state: string, reason: string): void;
     /** True after the peer was connected once. */
     get everConnected(): boolean;
-    /** Closes the peer object. */
+    /**
+     * Closes the direct link and drops it.
+     * @param {string} reason
+     */
+    closeDirect(reason: string): void;
+    /**
+     * Closes the connection: `closing` before anything is shut down, `closed` at the end.
+     * @param {string} [reason]
+     */
     close(reason?: string): void;
     #private;
 }

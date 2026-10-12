@@ -2,10 +2,10 @@
  * A group of peers in a mesh (plan section 3). The app owns membership: it calls `addPeer` and
  * `removePeer`, or enables `autoPeers` to follow the adapter's presence events.
  *
- * Events: `connection` (RealticConnection) when a connection is created, `peerleft`
- * (RealticConnection, reason), `presence` ({type, peer}).
+ * Events: `connection` (ReatPeerConnection) when a connection is created, `peerleft`
+ * (ReatPeerConnection, reason), `presence` ({type, peer}).
  */
-export class RealticGroup extends Emitter {
+export class ReatPeerGroup extends Emitter {
     /**
      * @param {object} options
      * @param {string} [options.selfId] fresh per page load (doc §7); generated when absent
@@ -26,10 +26,11 @@ export class RealticGroup extends Emitter {
         RTCPeerConnection?: typeof RTCPeerConnection;
         autoPeers?: boolean;
     });
-    /** @type {Map<string, RealticConnection>} */
-    connections: Map<string, RealticConnection>;
-    /** @type {Map<string, DirectLink>} */
-    links: Map<string, DirectLink>;
+    /**
+     * One connection per known peer, also when it could not be opened.
+     * @type {Map<string, ReatPeerConnection>}
+     */
+    connections: Map<string, ReatPeerConnection>;
     selfId: string;
     config: Readonly<{
         HEARTBEAT_IDLE_MS: 500;
@@ -193,10 +194,18 @@ export class RealticGroup extends Emitter {
     /** True when TURN servers are configured. */
     get hasTurn(): boolean;
     /**
-     * Adds a peer to the group and starts connecting to it. Returns the stable RealticConnection.
+     * The direct link of the connection to `peerId`, or undefined while there is none.
+     * @param {string} peerId
+     * @returns {DirectLink | undefined}
+     */
+    direct(peerId: string): DirectLink | undefined;
+    /** The direct links of all connections that have one. */
+    directLinks(): Generator<DirectLink, void, unknown>;
+    /**
+     * Adds a peer to the group and starts connecting to it. Returns the stable ReatPeerConnection.
      * @param {string} peerId
      */
-    addPeer(peerId: string): RealticConnection;
+    addPeer(peerId: string): ReatPeerConnection;
     /**
      * Removes a peer: sends `bye` and closes its link.
      * @param {string} peerId
@@ -271,17 +280,17 @@ export class RealticGroup extends Emitter {
     };
     /** JSON-serializable bundle for problem reports (plan section 12.1). */
     diagnosticReport(): Promise<any>;
-    /** Closes all links and peers. */
+    /** Closes all connections. */
     close(reason?: string): void;
     /** True after close(). */
     get closed(): boolean;
     #private;
 }
 import { Emitter } from "./util/emitter.js";
-import { RealticConnection } from "./connection.js";
-import { DirectLink } from "./link/direct-link.js";
+import { ReatPeerConnection } from "./peer-connection.js";
 import { Log } from "./diag/log.js";
 import { SignalingRouter } from "./signaling/router.js";
 import { MediaManager } from "./media/media.js";
 import { Routing } from "./routing/route.js";
 import { NetworkWatcher } from "./link/network.js";
+import { DirectLink } from "./link/direct-link.js";

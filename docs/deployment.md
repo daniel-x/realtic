@@ -8,11 +8,11 @@ A phone on the local network needs a real certificate or a tunnel.
 ## Signaling
 
 realtic talks to a signaling server through an adapter (`{ send, onmessage, onpresence, close }`).
-`RealticGroup` takes either an adapter or the settings of a reference server:
+`ReatPeerGroup` takes either an adapter or the settings of a reference server:
 
 ```js
-new RealticGroup({ signaling: { url: "https://example.com/realtic/signal.php", group: "demo" } }); // PHP server
-new RealticGroup({ signaling: { url: "wss://example.com/signal", group: "demo" } });               // Node server
+new ReatPeerGroup({ signaling: { url: "https://example.com/realtic/signal.php", group: "demo" } }); // PHP server
+new ReatPeerGroup({ signaling: { url: "wss://example.com/signal", group: "demo" } });               // Node server
 ```
 
 A signaling outage does not end live connections: they keep running and renegotiate over the
@@ -73,7 +73,7 @@ Peer relays carry traffic for pairs that cannot connect directly, so TURN is nee
 peer of the group can reach both ends. When it is needed, port 443 with TLS passes most firewalls:
 
 ```js
-const group = new RealticGroup({
+const group = new ReatPeerGroup({
   signaling,
   iceServers: [
     { urls: "stun:stun.example.com:3478" },
