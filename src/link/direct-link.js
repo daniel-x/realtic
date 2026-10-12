@@ -76,6 +76,7 @@ export class DirectLink extends Emitter {
   #closed = false;
   #lastDump = null;
   #lastMediaBytes = new Map();
+  #ctlRtt = undefined;
 
   /** Latest link metrics (plan section 7.1). */
   metrics = { state: "down", rtt: undefined, bitrate: undefined, loss: undefined, candidateType: undefined, remoteCandidateType: undefined };
@@ -516,7 +517,7 @@ export class DirectLink extends Emitter {
       }
       this.metrics = {
         state: this.#metricState(),
-        rtt: pair?.currentRoundTripTime != null ? pair.currentRoundTripTime * 1000 : this.metrics.rtt,
+        rtt: this.#ctlRtt ?? (pair?.currentRoundTripTime != null ? pair.currentRoundTripTime * 1000 : this.metrics.rtt),
         bitrate: pair?.availableOutgoingBitrate ?? undefined,
         loss: lossN ? lossSum / lossN : 0,
         candidateType: local?.candidateType,
@@ -535,6 +536,17 @@ export class DirectLink extends Emitter {
     if (this.#remoteVerdict === "stale") return "stale";
     const m = this.#monitor.state;
     return m === "ok" && this.#remoteVerdict === "slow" ? "slow" : m;
+  }
+
+  /**
+   * Records a round trip sample measured with the periodic `link-state` echo. It refreshes every
+   * link-state period, while the candidate pair RTT refreshes only with consent checks.
+   * @param {number} ms
+   */
+  noteControlRtt(ms) {
+    if (!(ms >= 0) || ms > 60000) return;
+    this.#ctlRtt = this.#ctlRtt === undefined ? ms : this.#ctlRtt * 0.5 + ms * 0.5;
+    this.metrics = { ...this.metrics, rtt: this.#ctlRtt };
   }
 
   /** True when the selected pair runs over TURN on either side. */

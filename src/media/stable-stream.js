@@ -1,3 +1,5 @@
+import { TRACK_SWAPPED } from "./attach.js";
+
 /**
  * Stable streams (plan section 10.3): one MediaStream per origin and publication that lives as
  * long as the publication, fed by whichever source (direct link or relay) the current route
@@ -81,6 +83,7 @@ export class StableStreams {
     e.current = track;
     e.stream.addTrack(track);
     if (old) e.stream.removeTrack(old);
+    if (old && typeof e.stream.dispatchEvent === "function") e.stream.dispatchEvent(new Event(TRACK_SWAPPED));
     if (!e.announced) {
       e.announced = true;
       this.emit(e.origin, "track", { track, stream: e.stream, tag: e.tag, kind: e.kind, origin: e.origin, pub: e.pub });

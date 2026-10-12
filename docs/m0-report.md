@@ -16,12 +16,12 @@ manual test matrix (plan section 14.7).
 | `RTCRtpScriptTransform` | present | present | encoded forwarding (M5) is possible in principle |
 | `createEncodedStreams` | present | absent | |
 | `MediaStreamTrackGenerator` / `VideoTrackGenerator` | first only | neither | `stableTracks` is Chromium-only; the stable stream works everywhere |
-| Adding and removing tracks of a playing `<video>`'s `srcObject` | keeps playing | keeps playing | stable streams as planned; Safari manual |
+| Adding and removing tracks of a playing `<video>`'s `srcObject` | new track renders after 5 ms | the element keeps playing but never renders the new track; assigning `srcObject` again renders it after 13 ms (`test/spikes/swap.html`) | stable streams dispatch `realtic-trackswapped`; `attachMedia(element, stream)` reassigns `srcObject` on each swap; Safari manual |
 | Netem proxy with candidate rewriting | works | works after binding the proxy socket on the candidate's own interface address (Firefox does not pair a non-loopback local candidate with a loopback remote one) | harness binds per real address |
 | Packet class filter (STUN passes, DTLS dropped) | ICE connects, data channel never opens | same | DIR-6 as planned |
 | Consent statistics of a frozen hidden tab (`Page.setWebLifecycleState frozen`) | candidate pair timestamp keeps advancing, link judged alive for 15 s | not testable (no CDP) | background mode as planned |
 | Network Information API | present | absent | srflx probe everywhere, `change` event where present |
-| TURN allocations through `turn-server` | see REL-13 | see REL-13 | |
+| TURN allocations through `turn-server` | work | work; Firefox pairs only relay with relay candidates on loopback, which needs the server's `allowLoopback` | REL-13 as planned |
 
 Not verified here (manual matrix): Safari `srcObject` track swap, iOS background suspension,
 Android local network permission, real WiFi/cellular handover with the srflx probe.

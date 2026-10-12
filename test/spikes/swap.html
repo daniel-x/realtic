@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<script type="module">
+const mk = (color) => { const c = document.createElement("canvas"); c.width = 64; c.height = 64; const x = c.getContext("2d"); setInterval(() => { x.fillStyle = color; x.fillRect(0, 0, 64, 64); x.fillStyle = "#" + Math.floor(Math.random()*999).toString().padStart(3,"0"); x.fillRect(0,0,4,4); }, 33); return c.captureStream(30).getVideoTracks()[0]; };
+window.swap = async (mode) => {
+  const a = mk("#ff0000"), b = mk("#0000ff");
+  const v = document.createElement("video"); v.muted = true; document.body.append(v);
+  const s = new MediaStream([a]); v.srcObject = s; await v.play();
+  await new Promise((r) => setTimeout(r, 1000));
+  const cv = document.createElement("canvas"); cv.width = 8; cv.height = 8; const cx = cv.getContext("2d");
+  const t0 = performance.now();
+  if (mode === "reassign") { v.srcObject = new MediaStream([b]); v.play(); } else { s.addTrack(b); s.removeTrack(a); }
+  while (performance.now() - t0 < 6000) {
+    cx.drawImage(v, 0, 0, 8, 8); const d = cx.getImageData(4, 4, 1, 1).data;
+    if (d[2] > 200 && d[0] < 50) return Math.round(performance.now() - t0);
+    await new Promise((r) => requestAnimationFrame(r));
+  }
+  return -1;
+};
+</script>

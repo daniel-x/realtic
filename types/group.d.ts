@@ -1,0 +1,307 @@
+/**
+ * A group of peers in a mesh (plan section 3). The app owns membership: it calls `addPeer` and
+ * `removePeer`, or enables `autoPeers` to follow the adapter's presence events.
+ *
+ * Events: `peer` (Peer) when a peer object is created, `peerleft` (Peer, reason),
+ * `presence` ({type, peer}).
+ */
+export class Group extends Emitter {
+    /**
+     * @param {object} options
+     * @param {string} [options.selfId] fresh per page load (doc §7); generated when absent
+     * @param {import("./signaling/adapter.js").SignalingAdapter} options.signaling
+     * @param {RTCIceServer[]} [options.iceServers]
+     * @param {Partial<typeof import("./config.js").DEFAULTS>} [options.config]
+     * @param {import("./util/clock.js").Clock} [options.clock]
+     * @param {typeof RTCPeerConnection} [options.RTCPeerConnection]
+     * @param {boolean} [options.autoPeers] add and remove peers from adapter presence events
+     */
+    constructor({ selfId, signaling, iceServers, config, clock, RTCPeerConnection: RTC, autoPeers }: {
+        selfId?: string;
+        signaling: import("./signaling/adapter.js").SignalingAdapter;
+        iceServers?: RTCIceServer[];
+        config?: Partial<typeof import("./config.js").DEFAULTS>;
+        clock?: import("./util/clock.js").Clock;
+        RTCPeerConnection?: typeof RTCPeerConnection;
+        autoPeers?: boolean;
+    });
+    /** @type {Map<string, Peer>} */
+    peers: Map<string, Peer>;
+    /** @type {Map<string, DirectLink>} */
+    links: Map<string, DirectLink>;
+    selfId: string;
+    config: Readonly<{
+        HEARTBEAT_IDLE_MS: 500;
+        SLOW_CONNECTION_MS: 1000;
+        STALE_CONNECTION_MS: 5000;
+        LIVENESS_CHECK_INTERVAL_MS: 250;
+        CHANNEL_OPEN_TIMEOUT_MS: 8000;
+        BACKGROUND_SLOW_MS: 12000;
+        BACKGROUND_STALE_MS: 20000;
+        connectTimeoutMs: 12000;
+        iceRestartBackoffMs: number[];
+        rebuildAttempts: 1;
+        recoveryStepTimeoutMs: 8000;
+        reprobeIntervalsMs: number[];
+        networkProbeIntervalMs: 10000;
+        candidateBatchMs: 50;
+        linkStateIntervalMs: 2000;
+        statsIntervalMs: 1000;
+        switchThreshold: 0.25;
+        switchHoldMs: 3000;
+        earlySwitchIntervalMs: 10000;
+        maxRelayLoad: 0.8;
+        maxRelayFlows: 32;
+        relayHopDownMs: 3000;
+        maxHops: 1;
+        switchOverlapMinMs: 50;
+        ackDelayMs: 100;
+        ackEvery: 32;
+        retransmitTimeoutMs: 3000;
+        creditWindowBytes: 1048576;
+        reliableBufferBytes: 16777216;
+        relayQueueBytes: 2097152;
+        hopHighWaterBytes: 1048576;
+        hopLowWaterBytes: 262144;
+        maxFragmentBytes: 65536;
+        audioReserveBps: 64000;
+        bweHeadroom: 0.9;
+        bweReportIntervalMs: 500;
+        bweDropReport: 0.2;
+        bweResolutionSteps: number[][];
+        bweFallbackBps: 1500000;
+        logCapacity: 1024;
+        logLevel: "info";
+        logConsole: false;
+        logRedact: false;
+        shareLogWithPeers: false;
+        relay: true;
+        mediaRelay: "allow";
+        allowRelay: any;
+        turnMode: "fallback";
+        stableTracks: false;
+        maxPeers: 16;
+        testHooks: any;
+    }>;
+    clock: import("./util/clock.js").Clock;
+    iceServers: RTCIceServer[];
+    signaling: import("./signaling/adapter.js").SignalingAdapter;
+    RTC: {
+        new (configuration?: RTCConfiguration): RTCPeerConnection;
+        prototype: RTCPeerConnection;
+        generateCertificate(keygenAlgorithm: AlgorithmIdentifier): Promise<RTCCertificate>;
+    };
+    autoPeers: boolean;
+    log: Log;
+    onListenerError: (error: any, name: any) => void;
+    l: {
+        debug: (msg: any, data: any) => void;
+        info: (msg: any, data: any) => void;
+        warn: (msg: any, data: any) => void;
+        error: (msg: any, data: any) => void;
+        ids: {
+            peer?: string;
+            session?: string;
+        };
+    };
+    hooks: any;
+    /** Protocol version this peer speaks (test hooks may override it). */
+    protocol: any;
+    router: SignalingRouter;
+    media: MediaManager;
+    routing: Routing;
+    network: NetworkWatcher;
+    linkCtx: {
+        selfId: string;
+        config: Readonly<{
+            HEARTBEAT_IDLE_MS: 500;
+            SLOW_CONNECTION_MS: 1000;
+            STALE_CONNECTION_MS: 5000;
+            LIVENESS_CHECK_INTERVAL_MS: 250;
+            CHANNEL_OPEN_TIMEOUT_MS: 8000;
+            BACKGROUND_SLOW_MS: 12000;
+            BACKGROUND_STALE_MS: 20000;
+            connectTimeoutMs: 12000;
+            iceRestartBackoffMs: number[];
+            rebuildAttempts: 1;
+            recoveryStepTimeoutMs: 8000;
+            reprobeIntervalsMs: number[];
+            networkProbeIntervalMs: 10000;
+            candidateBatchMs: 50;
+            linkStateIntervalMs: 2000;
+            statsIntervalMs: 1000;
+            switchThreshold: 0.25;
+            switchHoldMs: 3000;
+            earlySwitchIntervalMs: 10000;
+            maxRelayLoad: 0.8;
+            maxRelayFlows: 32;
+            relayHopDownMs: 3000;
+            maxHops: 1;
+            switchOverlapMinMs: 50;
+            ackDelayMs: 100;
+            ackEvery: 32;
+            retransmitTimeoutMs: 3000;
+            creditWindowBytes: 1048576;
+            reliableBufferBytes: 16777216;
+            relayQueueBytes: 2097152;
+            hopHighWaterBytes: 1048576;
+            hopLowWaterBytes: 262144;
+            maxFragmentBytes: 65536;
+            audioReserveBps: 64000;
+            bweHeadroom: 0.9;
+            bweReportIntervalMs: 500;
+            bweDropReport: 0.2;
+            bweResolutionSteps: number[][];
+            bweFallbackBps: 1500000;
+            logCapacity: 1024;
+            logLevel: "info";
+            logConsole: false;
+            logRedact: false;
+            shareLogWithPeers: false;
+            relay: true;
+            mediaRelay: "allow";
+            allowRelay: any;
+            turnMode: "fallback";
+            stableTracks: false;
+            maxPeers: 16;
+            testHooks: any;
+        }>;
+        clock: import("./util/clock.js").Clock;
+        log: Log;
+        RTCPeerConnection: {
+            new (configuration?: RTCConfiguration): RTCPeerConnection;
+            prototype: RTCPeerConnection;
+            generateCertificate(keygenAlgorithm: AlgorithmIdentifier): Promise<RTCCertificate>;
+        };
+        sendSignal: (to: any, msg: any) => Promise<void>;
+        rtcConfig: (link: any, withTurn: any) => {
+            iceServers: RTCIceServer[];
+            bundlePolicy: string;
+        };
+        canAddTurn: (link: any) => boolean;
+    };
+    /** Resolves when keys and capabilities are ready. */
+    get ready(): Promise<void>;
+    /** Local codec capabilities, once collected. */
+    get localCaps(): any;
+    /** RTCConfiguration for a link (plan section 11). */
+    rtcConfig(withTurn: any): {
+        iceServers: RTCIceServer[];
+        bundlePolicy: string;
+    };
+    /** True when TURN servers are configured. */
+    get hasTurn(): boolean;
+    /**
+     * Adds a peer to the group and starts connecting to it. Returns the stable Peer object.
+     * @param {string} peerId
+     */
+    addPeer(peerId: string): Peer;
+    /**
+     * Removes a peer: sends `bye` and closes its link.
+     * @param {string} peerId
+     */
+    removePeer(peerId: string, reason?: string): void;
+    /**
+     * The index this side uses for `peerId` on `link`, allocating and announcing a new one.
+     * @param {DirectLink} link
+     * @param {string} peerId
+     */
+    localIndex(link: DirectLink, peerId: string): any;
+    /** Peer id for an index in the neighbor's table, or undefined. */
+    remoteIndex(link: any, idx: any): any;
+    /** @internal */
+    extraRoutes(peer: any): any[];
+    /** @internal */
+    pathMessageSize(route: any): number;
+    /** @internal */
+    onE2ELiveness(peer: any, state: any, silence: any): void;
+    /** @internal */
+    onPeerControl(peer: any, msg: any): void;
+    /** @internal link id whose received tracks of `origin` the stable stream should use */
+    mediaSourceFor(origin: any): any;
+    /** @internal media plan of a link: the sources it must carry */
+    mediaPlan(link: any): {
+        key: string;
+        info: any;
+        track: any;
+        active: boolean;
+    }[];
+    /** @internal */
+    receivedSource(link: any, info: any, track: any): void;
+    /** @internal */
+    receivedSourceGone(link: any, info: any): void;
+    /** @internal */
+    forwardedSourcesGone(linkId: any): void;
+    /** @internal re-plans media on all open links */
+    mediaChanged(): void;
+    /** True when this side wants `origin`'s track of `kind` and `tag`. */
+    subscribed(origin: any, kind: any, tag: any): boolean;
+    /** This side's subscription for `origin`. */
+    subscription(origin: any): any;
+    /** True when hello with `peerId` completed. */
+    helloDone(peerId: any): boolean;
+    /**
+     * Publishes a local track to all peers or a list of peer ids.
+     * @param {MediaStreamTrack} track
+     * @param {{tag?: string, to?: "all" | string[]}} [options]
+     */
+    publish(track: MediaStreamTrack, options?: {
+        tag?: string;
+        to?: "all" | string[];
+    }): import("./index.js").Publication;
+    /**
+     * Sets which media of `origin` this side wants. Unsubscribed flows stop at their source.
+     * @param {string} origin
+     * @param {import("./media/subscriptions.js").Subscription} sub
+     */
+    setSubscription(origin: string, sub: import("./media/subscriptions.js").Subscription): void;
+    /** Runs a liveness check on all links at once; restarts ICE on slow or stale ones. */
+    checkLinks(reason: any): void;
+    /** ICE restart on every live direct link (decision D15). */
+    restartAll(reason: any): void;
+    /** Sends `bye` to all peers via mesh and signaling. Usable from `pagehide`. */
+    leave(): void;
+    /** Browser and library features (plan section 10.6). */
+    capabilities(): {
+        setSinkId: boolean;
+        getDisplayMedia: boolean;
+        encodedTransform: boolean;
+        encodedStreams: boolean;
+        trackGenerator: boolean;
+        networkInformation: boolean;
+    };
+    /** Per link and per route metrics, relay load and budgets. */
+    getStats(): {
+        selfId: any;
+        load: number;
+        relayFlows: {
+            flow: any;
+            origin: any;
+            target: any;
+            role: any;
+            kinds: any;
+        }[];
+        links: {};
+        peers: {};
+        budgets: {
+            links: {};
+            relayed: {};
+            reported: {};
+        };
+    };
+    /** JSON-serializable bundle for problem reports (plan section 12.1). */
+    diagnosticReport(): Promise<any>;
+    /** Closes all links and peers. */
+    close(reason?: string): void;
+    /** True after close(). */
+    get closed(): boolean;
+    #private;
+}
+import { Emitter } from "./util/emitter.js";
+import { Peer } from "./peer.js";
+import { DirectLink } from "./link/direct-link.js";
+import { Log } from "./diag/log.js";
+import { SignalingRouter } from "./signaling/router.js";
+import { MediaManager } from "./media/media.js";
+import { Routing } from "./routing/route.js";
+import { NetworkWatcher } from "./link/network.js";

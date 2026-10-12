@@ -1,6 +1,6 @@
 // Mesh call demo: every page in the same room calls every other. Open
 // http://localhost:8080/examples/call/?room=test in several tabs or devices.
-import { Group, WebSocketSignaling, HINT_TEXT } from "../../src/index.js";
+import { Group, WebSocketSignaling, HINT_TEXT, attachMedia } from "../../src/index.js";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") ?? "demo";
@@ -44,8 +44,8 @@ group.on("peer", (peer) => {
   render(peer);
   peer.on("statechange", () => render(peer));
   peer.on("routechange", () => render(peer));
-  peer.on("track", ({ stream }) => {
-    tile(peer.id).video.srcObject = stream;
+  peer.on("track", ({ stream, kind }) => {
+    if (kind === "video" || !tile(peer.id).video.srcObject) attachMedia(tile(peer.id).video, stream);
   });
 });
 group.on("peerleft", (peer) => {

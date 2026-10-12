@@ -15,8 +15,8 @@ const MEDIA = process.env.REALTIC_MEDIA !== "0";
 /** Browser lists of a pairing; `relayOther` swaps the relay (index 2) to the other engine. */
 function browsersFor(pairing, n, relayOther = false) {
   const list = PAIRINGS[pairing].slice(0, n);
-  if (relayOther && pairing !== "mixed") list[2] = pairing === "chromium" ? "firefox" : "chromium";
-  if (pairing === "mixed") list[2] = "firefox";
+  if (n > 2 && relayOther && pairing !== "mixed") list[2] = pairing === "chromium" ? "firefox" : "chromium";
+  if (n > 2 && pairing === "mixed") list[2] = "firefox";
   return list;
 }
 
@@ -328,7 +328,7 @@ for (const pairing of pairings()) {
       });
 
       test("REL-13 TURN: used when no peer route exists, replaced by a peer relay", async () => {
-        const turn = createTurnServer({ auth: { mechanism: "long-term", realm: "realtic.test", credentials: { test: "secret" } }, relay: { ip: "127.0.0.1", externalIp: "127.0.0.1" } });
+        const turn = createTurnServer({ allowLoopback: true, auth: { mechanism: "long-term", realm: "realtic.test", credentials: { test: "secret" } }, relay: { ip: "127.0.0.1", externalIp: "127.0.0.1" } });
         const turnPort = 30000 + Math.floor(Math.random() * 20000);
         await new Promise((resolve) => {
           turn.on("listening", (info) => info.transport === "udp" && resolve());
@@ -352,6 +352,22 @@ for (const pairing of pairings()) {
           await Promise.race([new Promise((resolve) => turn.stop(resolve)), sleep(2000)]);
         }
       });
+
+      if (MEDIA) {
+        test("REL-14 codec mismatch: the relay choice respects capabilities", async () => {
+          const noVp8 = { send: { video: ["video/H264"], audio: ["audio/opus"] }, recv: { video: ["video/H264"], audio: ["audio/opus"] } };
+          await withScenario(`REL-14-${tag}`, { browsers: browsersFor(pairing, 4, relayOther), config: FAST, peerConfig: { 0: { caps: { send: { video: ["video/VP8"], audio: ["audio/opus"] }, recv: { video: ["video/VP8"], audio: ["audio/opus"] } } }, 1: { caps: { send: { video: ["video/VP8"], audio: ["audio/opus"] }, recv: { video: ["video/VP8"], audio: ["audio/opus"] } } }, 2: { caps: noVp8 } } }, async (s) => {
+            await s.eval(0, () => window.t.publishCounter("camera"));
+            await meshWithBlocks(s, [[0, 1]]);
+            await waitRoute(s, 0, 1, "relay", 3, 30000);
+            await sleep(3000);
+            assert.equal((await route(s, 0, 1)).via, s.id(3), "relay that cannot decode VP8 is not used");
+            const flows = await s.eval(0, (id) => window.t.stats().peers[id].flows, s.id(1));
+            assert.ok(!flows.some((f) => f.via === s.id(2)), "no flow through the incompatible relay");
+            await waitFor(async () => (await s.eval(1, (k) => window.t.frames(k).length, `${s.id(0)}:camera`)) > 10, 20000, "video via the compatible relay");
+          });
+        });
+      }
 
       test("REL-15 partial reliability through a relay", async () => {
         await withScenario(`REL-15-${tag}`, { browsers: browsersFor(pairing, 3, relayOther), config: FAST }, async (s) => {

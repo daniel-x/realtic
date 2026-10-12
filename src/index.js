@@ -2,6 +2,7 @@ export { Group } from "./group.js";
 export { Peer } from "./peer.js";
 export { RealticChannel } from "./channel/channel.js";
 export { Publication } from "./media/media.js";
+export { attachMedia, TRACK_SWAPPED } from "./media/attach.js";
 export { MemoryHub } from "./signaling/adapter.js";
 export { WebSocketSignaling } from "./signaling/websocket.js";
 export { Log, formatTime } from "./diag/log.js";

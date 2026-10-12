@@ -1,5 +1,5 @@
 // Test page controller: the Node test drives one peer per page through `window.t`.
-import { Group, WebSocketSignaling } from "../../../src/index.js";
+import { Group, WebSocketSignaling, attachMedia } from "../../../src/index.js";
 
 const BITS = 16;
 const BLOCK = 20;
@@ -226,8 +226,8 @@ function attachVideo(key, stream) {
     t.videos.set(key, v);
     sample(v);
   }
-  v.video.srcObject = stream;
-  v.video.play().catch(() => {});
+  v.detach?.();
+  v.detach = attachMedia(v.video, stream);
 }
 
 function sample(v) {

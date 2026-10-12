@@ -18,7 +18,7 @@ export function buildLinkState(group, load) {
       mms: link.maxMessageSize,
     });
   }
-  return { t: "link-state", links, load, relay: !!group.config.relay, mediaRelay: group.config.mediaRelay };
+  return { t: "link-state", links, load, relay: !!group.config.relay, mediaRelay: group.config.mediaRelay, ts: Math.round(group.clock.now()) };
 }
 
 /**

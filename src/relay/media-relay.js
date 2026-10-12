@@ -22,6 +22,8 @@ export class MediaRelay {
   #routing;
   /** link id -> Map<source key, bps> */
   #budgets = new Map();
+  /** link id -> loss-based estimate (browsers without availableOutgoingBitrate) */
+  #estimate = new Map();
   /** link id -> {bytes, at} outbound video measurement */
   #sendRate = new Map();
   /** `${origin}:${pub}` -> {info, track, via} tracks received for forwarding */
@@ -32,6 +34,8 @@ export class MediaRelay {
   #reporters = new Map();
   /** origin id -> Map<pub, bps> last relay budgets computed for an origin */
   #relayBudgets = new Map();
+  #remoteKinds = new Map();
+  #sentKinds = new Map();
   /** subscriber id -> Map<origin, subscription> */
   subs = new Map();
 
@@ -153,16 +157,16 @@ export class MediaRelay {
     return out;
   }
 
+  /**
+   * Encoding parameters. On a direct path the browser's own congestion control adapts the
+   * bitrate, so only relayed flows get explicit caps: a relay encodes every output at the minimum
+   * budget of its destinations, and the origin applies the budget the relay reported (D3).
+   */
   #params(link, p) {
     if (p.info.kind !== "video") return undefined;
-    let bps = this.#budgets.get(link.remoteId)?.get(p.key);
-    if (p.key.startsWith("fwd:")) {
-      const relayed = this.#relayBudgets.get(p.info.origin)?.get(p.info.pub);
-      if (relayed !== undefined) bps = relayed;
-    } else {
-      const reported = this.#reported.get(link.remoteId)?.get(p.info.pub);
-      if (reported !== undefined) bps = bps === undefined ? reported : Math.min(bps, reported);
-    }
+    const bps = p.key.startsWith("fwd:")
+      ? this.#relayBudgets.get(p.info.origin)?.get(p.info.pub)
+      : this.#reported.get(link.remoteId)?.get(p.info.pub);
     if (bps === undefined) return undefined;
     return { maxBitrate: bps, scaleResolutionDownBy: scaleFor(bps, this.#group.config.bweResolutionSteps) };
   }
@@ -174,9 +178,14 @@ export class MediaRelay {
     return [...kinds];
   }
 
-  /** True when the pair with `peerId` exchanges media. */
+  /** True when the pair with `peerId` exchanges media (our publications or theirs). */
   pairHasMedia(peerId) {
-    return this.kindsFor(peerId).length > 0;
+    return this.kindsFor(peerId).length > 0 || (this.#remoteKinds.get(peerId)?.length ?? 0) > 0;
+  }
+
+  /** Handles the end to end `media` message: the kinds the remote side publishes to us. */
+  onRemoteKinds(peerId, kinds) {
+    this.#remoteKinds.set(peerId, Array.isArray(kinds) ? kinds : []);
   }
 
   // Forwarding sources (relay side) -------------------------------------------------------------
@@ -210,7 +219,10 @@ export class MediaRelay {
 
   // Bandwidth -----------------------------------------------------------------------------------
 
-  /** Bitrate the link can carry, or undefined when only the browser's own control applies. */
+  /**
+   * Bitrate the link can carry: `availableOutgoingBitrate`, or where a browser does not report
+   * it, a loss-based estimate (additive increase, multiplicative decrease above 10 % loss).
+   */
   #capacity(link, stats) {
     const m = link.metrics;
     if (typeof m.bitrate === "number" && m.bitrate > 0) return m.bitrate;
@@ -220,8 +232,11 @@ export class MediaRelay {
     const prev = this.#sendRate.get(link.remoteId);
     const rate = prev && now > prev.at ? ((bytes - prev.bytes) * 8000) / (now - prev.at) : undefined;
     this.#sendRate.set(link.remoteId, { bytes, at: now });
-    if (rate === undefined || (m.loss ?? 0) < 0.05) return undefined;
-    return rate * 0.9;
+    if (rate === undefined) return undefined;
+    const last = this.#estimate.get(link.remoteId) ?? this.#group.config.bweFallbackBps;
+    const next = (m.loss ?? 0) > 0.1 ? Math.max(50000, Math.min(last, rate) * 0.85) : Math.min(last + Math.max(50000, last * 0.08), 4000000);
+    this.#estimate.set(link.remoteId, next);
+    return next;
   }
 
   onMetrics(link, m, stats) {
@@ -295,7 +310,16 @@ export class MediaRelay {
     this.#group.media.sync(link);
   }
 
-  tick() {}
+  /** Tells each peer which media kinds we publish to it, when that changed. */
+  tick() {
+    for (const peer of this.#group.peers.values()) {
+      if (!peer.routeInfo) continue;
+      const kinds = this.kindsFor(peer.id).sort().join(",");
+      if (this.#sentKinds.get(peer.id) === kinds) continue;
+      this.#sentKinds.set(peer.id, kinds);
+      peer.session.sendControl({ t: "media", kinds: kinds ? kinds.split(",") : [] });
+    }
+  }
 
   /** Bitrate this peer forwards for others, in bps (sum of forwarding budgets). */
   relayedBps() {

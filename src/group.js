@@ -201,10 +201,11 @@ export class Group extends Emitter {
 
   // Hello ---------------------------------------------------------------------------------------
 
-  #helloMessage(ack) {
+  #helloMessage(ack, peerId) {
     return {
       t: "hello",
       ack,
+      media: this.routing.mediaRelay.kindsFor(peerId),
       proto: { major: this.protocol.major, minor: this.protocol.minor, features: this.protocol.features },
       key: this.#publicJwk,
       caps: this.#caps,
@@ -214,7 +215,7 @@ export class Group extends Emitter {
   }
 
   #sendHello(peerId, ack) {
-    this.router.send(peerId, this.#helloMessage(ack), { serverOnly: true });
+    this.router.send(peerId, this.#helloMessage(ack, peerId), { serverOnly: true });
     if (ack || this.#helloTimers.has(peerId)) return;
     const timer = this.clock.setInterval(() => {
       if (this.#helloDone.has(peerId) || !this.peers.has(peerId)) {
@@ -222,7 +223,7 @@ export class Group extends Emitter {
         this.#helloTimers.delete(peerId);
         return;
       }
-      this.router.send(peerId, this.#helloMessage(false), { serverOnly: true });
+      this.router.send(peerId, this.#helloMessage(false, peerId), { serverOnly: true });
     }, HELLO_RETRY_MS);
     this.#helloTimers.set(peerId, timer);
   }
@@ -252,6 +253,7 @@ export class Group extends Emitter {
     const minor = Math.min(this.protocol.minor, msg.proto.minor ?? 0);
     const featuresCommon = this.protocol.features.filter((f) => (msg.proto.features ?? []).includes(f));
     peer.remote = { ...msg, proto: { major: this.protocol.major, minor, features: featuresCommon } };
+    this.routing.mediaRelay.onRemoteKinds(from, msg.media);
     try {
       peer.pairKey = await derivePairKey(this.#keys.privateKey, msg.key, this.selfId, from);
     } catch (error) {

@@ -17,11 +17,13 @@
   ],
   "scripts": {
     "test": "node --test \"test/unit/**/*.test.js\"",
-    "test:integration": "node --test --test-concurrency=1 test/integration/fast.test.js",
-    "test:full": "node --test --test-concurrency=1 test/integration/",
+    "test:integration": "node test/integration/fast.js",
+    "test:full": "node --test --test-concurrency=1 test/integration/direct/dir.test.js test/integration/relay/rel.test.js",
     "lint": "eslint src test examples",
     "types": "tsc -p tsconfig.json",
-    "bundle": "esbuild src/index.js --bundle --format=esm --outfile=dist/realtic.js"
+    "bundle": "esbuild src/index.js --bundle --format=esm --outfile=dist/realtic.js",
+    "test:soak": "node --test test/integration/soak/soak.test.js",
+    "spike": "node test/spikes/m0.js"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
