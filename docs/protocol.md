@@ -22,7 +22,7 @@ routes them over the mesh (section 3 below).
 
 Types:
 
-- `hello { ack, proto: { major, minor, features }, key, caps, relay, mediaRelay }`: `key` is the
+- `hello { ack, proto: { major, minor, features }, key, caps, relay, mediaRelay, media }`: `key` is the
   ECDH P-256 public key as JWK, `caps` the codec lists, decode probes and feature flags. Sent when
   the app adds the peer and repeated every 3 s until the remote `hello` arrives; a `hello` without
   `ack` is answered with `ack: true`. Always sent through the server.
@@ -50,7 +50,7 @@ JSON `{ t, ...fields }`:
 | `t` | Fields | Meaning |
 | --- | ------ | ------- |
 | `index-map` | `map: { [idx]: peerId }, full?` | indices the sender uses in envelope headers; 0 is the sender, 1 the receiver |
-| `link-state` | `links: [{ peer, state, rtt, bitrate, loss, candidateType, mms }], load, relay, mediaRelay` | the sender's link table, every 2 s and on change |
+| `link-state` | `links: [{ peer, state, rtt, bitrate, loss, candidateType, mms }], load, relay, mediaRelay, ts, echo?: { ts, held }` | the sender's link table, every 2 s and on change; `echo` returns the last received `ts` and how long it was held, for a round trip time |
 | `liveness` | `state` | the sender's verdict about this link (`ok`, `slow`, `stale`) |
 | `relay-request` | `flow, origin, target, role, kinds` | route owner asks a neighbor to relay |
 | `relay-accept` | `flow` | |
@@ -122,6 +122,7 @@ End to end control messages on channel 0:
 | `ch-ack` | `id` |
 | `ch-close` | `id` |
 | `bg`, `fg` | none (relayed routes) |
+| `media` | `kinds`: media kinds the sender publishes to the receiver |
 | `log-request` | `id` |
 | `log-response` | `id, part, parts, data` or `id, refused: true` |
 

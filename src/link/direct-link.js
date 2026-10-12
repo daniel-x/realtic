@@ -734,6 +734,11 @@ export class DirectLink extends Emitter {
     return this.#conn?.hop.queuedBytes(key, flow) ?? 0;
   }
 
+  /** Transport channels of the current generation, for diagnostics. */
+  get transports() {
+    return this.#conn?.hop.describe() ?? [];
+  }
+
   /** Total bufferedAmount over the transport channels. */
   get bufferedAmount() {
     return this.#conn?.hop.bufferedAmount ?? 0;

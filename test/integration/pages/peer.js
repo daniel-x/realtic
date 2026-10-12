@@ -285,6 +285,7 @@ t.hook = {
     while (performance.now() < end);
   },
   captureForwarded: () => (t.forwarded = []),
+  transports: (peerId) => t.group.links.get(peerId)?.transports ?? [],
   sendCtl: (peerId, msg) => t.group.links.get(peerId)?.sendCtl(msg),
   rawEnvelope: async (via, target) => {
     const { encode } = await import("../../../src/transport/framing.js");

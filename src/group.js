@@ -17,6 +17,7 @@ import { wants, normalize } from "./media/subscriptions.js";
 import { Routing } from "./routing/route.js";
 
 const HELLO_RETRY_MS = 3000;
+const HELD_SIGNAL_LIMIT = 64;
 const MESH_ONLY_REJECT = new Set(["hello", "offer", "answer"]);
 
 /**
@@ -32,6 +33,7 @@ export class Group extends Emitter {
   /** @type {Map<string, DirectLink>} */
   links = new Map();
   #pendingHellos = new Map();
+  #heldSignals = new Map();
   #helloTimers = new Map();
   #helloDone = new Set();
   #dedupe = new Dedupe();
@@ -173,6 +175,7 @@ export class Group extends Emitter {
     this.peers.delete(peerId);
     this.#helloDone.delete(peerId);
     this.#pendingHellos.delete(peerId);
+    this.#heldSignals.delete(peerId);
     this.clock.clearInterval(this.#helloTimers.get(peerId));
     this.#helloTimers.delete(peerId);
     this.routing.peerGone(peerId);
@@ -285,6 +288,9 @@ export class Group extends Emitter {
     link.on("metrics", (m, stats) => this.routing.onMetrics(link, m, stats));
     link.on("drain", () => this.#onDrain(link));
     link.start();
+    const held = this.#heldSignals.get(peerId) ?? [];
+    this.#heldSignals.delete(peerId);
+    for (const msg of held) link.handleSignal(msg);
     return link;
   }
 
@@ -310,7 +316,10 @@ export class Group extends Emitter {
     }
     const link = this.links.get(from);
     if (!link) {
-      this.l.debug("signal for unknown link", { t: msg.t, from });
+      let held = this.#heldSignals.get(from);
+      if (!held) this.#heldSignals.set(from, (held = []));
+      if (held.length < HELD_SIGNAL_LIMIT) held.push(msg);
+      this.l.debug("signal held until the link exists", { t: msg.t, from });
       return;
     }
     link.handleSignal(msg);

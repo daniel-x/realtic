@@ -268,6 +268,11 @@ export class HopChannels extends Emitter {
     return false;
   }
 
+  /** Transport channels with their negotiated reliability, for diagnostics. */
+  describe() {
+    return [...this.#channels].map(([key, dc]) => ({ key, id: dc.id, ordered: dc.ordered, maxRetransmits: dc.maxRetransmits, maxPacketLifeTime: dc.maxPacketLifeTime, readyState: dc.readyState }));
+  }
+
   /** Total bufferedAmount over all transport channels. */
   get bufferedAmount() {
     let n = 0;
