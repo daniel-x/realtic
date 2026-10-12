@@ -87,3 +87,12 @@ test("messages to non-members are dropped, bad ids rejected", { skip: !hasPhp &&
   await new Promise((r) => setTimeout(r, 300));
   assert.equal(b.got.length, 0);
 });
+
+test("a poll that arrives after leave does not add the client back", { skip: !hasPhp && "no PHP" }, async () => {
+  const post = (id, body) => fetch(`${server.url}?group=r4&id=${id}`, { method: "POST", body: JSON.stringify(body) });
+  await post("F", {});
+  await post("G", {});
+  assert.equal((await post("F", { leave: true })).status, 200);
+  assert.equal((await post("F", {})).status, 410);
+  assert.deepEqual((await (await post("G", {})).json()).members, ["G"]);
+});

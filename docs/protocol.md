@@ -49,7 +49,8 @@ POST signal.php?group=<group>&id=<id>
 ```
 
 Presence is the difference between consecutive `members` lists. `leave: true` removes the client;
-`navigator.sendBeacon` uses the same request.
+`navigator.sendBeacon` uses the same request. After a leave the server answers polls of the same
+id with 410 for `member_timeout_s`, so a poll still in flight cannot add the client back.
 
 Node server: WebSocket `ws(s)://host/signal?id=&group=`. Client frames `{ to, msg }`, server frames
 `{ from, msg }` and `{ presence: "join" | "leave", peer }`; beacons POST `{ to, msg }` to
