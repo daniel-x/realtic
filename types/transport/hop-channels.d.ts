@@ -78,6 +78,15 @@ export class HopChannels extends Emitter {
      * @param {object} msg
      */
     handleCtl(msg: object): boolean;
+    /** Transport channels with their negotiated reliability, for diagnostics. */
+    describe(): {
+        key: any;
+        id: any;
+        ordered: any;
+        maxRetransmits: any;
+        maxPacketLifeTime: any;
+        readyState: any;
+    }[];
     /** Total bufferedAmount over all transport channels. */
     get bufferedAmount(): number;
     close(): void;

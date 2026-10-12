@@ -72,6 +72,15 @@ Differences to `RTCDataChannel`:
 - `maxRetransmits` applies per hop on a relayed route, `maxPacketLifeTime` end to end.
 - `Blob` is not accepted.
 
+## attachMedia
+
+`attachMedia(element, stream)` plays a stable stream in a media element and keeps it playing
+when the library swaps the stream's track (route change, rebuild). Firefox needs it: it does not
+render a track added to a playing `srcObject`. Returns a function that detaches it.
+
+With `config.stableTracks` (Chromium, `MediaStreamTrackGenerator`), the `track` of the `track`
+event is a generated track that never changes; frames of the current source are copied into it.
+
 ## Publication
 
 `id`, `track`, `kind`, `tag`, `replaceTrack(track)` (no renegotiation), `close()`.
@@ -114,3 +123,5 @@ All values in `DEFAULTS` (`src/config.js`) can be overridden per group. The most
 | `turnMode` | "fallback" | "always", "relay-only" |
 | `logCapacity`, `logLevel`, `logConsole`, `logRedact` | 1024, "info", false, false | logging |
 | `shareLogWithPeers` | false | answer `requestLog()` |
+| `stableTracks` | false | one generated track per publication (Chromium) |
+| `relayHopDownMs` | 3000 | a relay reports a hop as down after this silence |

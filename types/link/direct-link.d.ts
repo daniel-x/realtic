@@ -195,6 +195,15 @@ export class DirectLink extends Emitter {
     sendEnvelope(key: string, flow: string, bytes: Uint8Array): boolean;
     /** Bytes queued for a flow on a transport channel. */
     queuedBytes(key: any, flow: any): any;
+    /** Transport channels of the current generation, for diagnostics. */
+    get transports(): {
+        key: any;
+        id: any;
+        ordered: any;
+        maxRetransmits: any;
+        maxPacketLifeTime: any;
+        readyState: any;
+    }[];
     /** Total bufferedAmount over the transport channels. */
     get bufferedAmount(): number;
     /**

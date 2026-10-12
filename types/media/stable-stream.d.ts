@@ -10,15 +10,20 @@ export class StableStreams {
      * @param {(origin: string) => string | null} options.preferredSource link id the origin's route uses
      * @param {(origin: string, event: string, detail: object) => void} options.emit
      * @param {() => MediaStream} [options.createStream]
+     * @param {boolean} [options.stableTracks] give one generated track per publication (Chromium)
      */
-    constructor({ preferredSource, emit, createStream }: {
+    constructor({ preferredSource, emit, createStream, stableTracks, graceMs, clock }: {
         preferredSource: (origin: string) => string | null;
         emit: (origin: string, event: string, detail: object) => void;
         createStream?: () => MediaStream;
+        stableTracks?: boolean;
     });
+    graceMs: any;
+    clock: any;
     preferredSource: (origin: string) => string | null;
     emit: (origin: string, event: string, detail: object) => void;
     createStream: () => MediaStream;
+    stableTracks: boolean;
     /**
      * Registers a track for a publication from a source link.
      * @param {{origin: string, pub: string, tag: string, kind: string}} info
@@ -32,13 +37,15 @@ export class StableStreams {
         kind: string;
     }, source: string, track: MediaStreamTrack): void;
     /**
-     * Removes a source of a publication; ends the publication when no source is left.
+     * Removes a source of a publication; ends the publication when no source is left. With
+     * `grace`, the stream waits `graceMs` for a new source first (link rebuild or route repair).
      * @param {string} origin
      * @param {string} pub
      * @param {string} source
+     * @param {boolean} [grace]
      */
-    detach(origin: string, pub: string, source: string): void;
-    /** Removes every source that came over `source`. */
+    detach(origin: string, pub: string, source: string, grace?: boolean): void;
+    /** Removes every source that came over `source`, keeping the streams for `graceMs`. */
     detachSource(source: any): void;
     /** Removes every publication of `origin`. */
     dropOrigin(origin: any): void;
