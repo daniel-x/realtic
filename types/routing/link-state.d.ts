@@ -1,6 +1,6 @@
 /**
  * Link-state tables (plan section 7.1). Each peer sends its direct link table to its neighbors on
- * `ctl`; with a hop limit of one no flooding is needed.
+ * `ctl`; with at most one relay no flooding is needed.
  */
 /** Builds this peer's `link-state` message. */
 export function buildLinkState(group: any, load: any): {

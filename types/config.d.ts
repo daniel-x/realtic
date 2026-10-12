@@ -25,7 +25,7 @@ export function makeConfig(overrides?: Partial<typeof DEFAULTS>): Readonly<{
     maxRelayLoad: 0.8;
     maxRelayFlows: 32;
     relayHopDownMs: 3000;
-    maxHops: 1;
+    maxHops: 2;
     switchOverlapMinMs: 50;
     ackDelayMs: 100;
     ackEvery: 32;
@@ -104,8 +104,8 @@ export const DEFAULTS: Readonly<{
     maxRelayFlows: 32;
     /** A relay sends `route-down` for a hop silent this long, before the hop's own stale verdict. */
     relayHopDownMs: 3000;
-    /** Maximum relay hops. Only 1 is supported in this version. */
-    maxHops: 1;
+    /** Maximum hops (links) of a route: 1 is direct, 2 is through one relay. Only 2 is supported. */
+    maxHops: 2;
     /** Make-before-break overlap of a planned route switch, in RTTs, bounded below. */
     switchOverlapMinMs: 50;
     /** Cumulative end to end acks are sent after this delay or this many messages. */

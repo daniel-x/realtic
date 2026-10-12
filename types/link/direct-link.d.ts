@@ -83,7 +83,7 @@ export class DirectLink extends Emitter {
         maxRelayLoad: 0.8;
         maxRelayFlows: 32;
         relayHopDownMs: 3000;
-        maxHops: 1;
+        maxHops: 2;
         switchOverlapMinMs: 50;
         ackDelayMs: 100;
         ackEvery: 32;
