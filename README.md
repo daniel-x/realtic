@@ -22,12 +22,10 @@ playing across route changes.
 ## Quick Start
 
 ```js
-import { Group, WebSocketSignaling } from "realtic";
+import { Group } from "realtic";
 
-const selfId = crypto.randomUUID();
 const group = new Group({
-  selfId,
-  signaling: new WebSocketSignaling("wss://example.com/signal", selfId, { room: "demo" }),
+  signaling: { url: "https://example.com/realtic/signal.php", room: "demo" },
   iceServers: [{ urls: "stun:stun.example.com:3478" }],
   autoPeers: true,
 });
@@ -42,13 +40,25 @@ const media = await navigator.mediaDevices.getUserMedia({ audio: true, video: tr
 for (const track of media.getTracks()) group.publish(track);
 ```
 
-Run the demos with the example signaling server:
+## Signaling Servers
+
+realtic ships two reference signaling servers. The client picks the adapter from the URL: a
+`ws://` or `wss://` URL uses the WebSocket adapter, any other URL the polling adapter, or set
+`type: "polling" | "websocket"` explicitly.
+
+- `server/php/`: `signal.php` with SQLite and repeated polling (no long-lived requests), for plain
+  PHP hosting. This is the default of the demos.
+- `server/node/`: a WebSocket server, for hosts that run a Node process (needs `npm install ws`).
+
+Run the demos with either:
 
 ```sh
-npm install
-node examples/server/server.js 8080
+php -S localhost:8080 server/php/router.php
 # http://localhost:8080/examples/call/?room=test   (open in several tabs or devices)
 # http://localhost:8080/examples/chat/?room=test
+
+npm install && node server/node/server.js 8080
+# http://localhost:8080/examples/call/?room=test&server=node
 ```
 
 ## Documentation

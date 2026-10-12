@@ -8,16 +8,64 @@ A phone on the local network needs a real certificate or a tunnel.
 ## Signaling
 
 realtic talks to a signaling server through an adapter (`{ send, onmessage, onpresence, close }`).
-`examples/server/server.js` is a minimal WebSocket server for the reference adapter
-`WebSocketSignaling`; any transport works (HTTP polling, Firebase, a message broker). Rules for a
-server of your own:
+`Group` takes either an adapter or the settings of a reference server:
+
+```js
+new Group({ signaling: { url: "https://example.com/realtic/signal.php", room } }); // PHP server
+new Group({ signaling: { url: "wss://example.com/signal", room } });               // Node server
+```
+
+A signaling outage does not end live connections: they keep running and renegotiate over the
+mesh. Only new pairs and pairs that need a new direct link wait for the server.
+
+### PHP Server (`server/php`)
+
+Requirements: PHP 8.0 or newer with `pdo_sqlite` (SQLite 3.24 or newer), which most shared hosts have.
+
+1. Copy `server/php/signal.php` and `server/php/data/` (with its `.htaccess`) to the web space.
+2. Optional: copy `config.example.php` to `config.php` next to `signal.php` and adjust it.
+3. Make `data/` writable for PHP. Keep the database out of reach of HTTP: the `.htaccess` covers
+   Apache; on nginx deny the directory (`location ~ /data/ { deny all; }`), or set `db` to a path
+   outside the document root.
+
+Each client sends one POST per poll: every `poll_fast_ms` (250) for 5 s after a message, every
+`poll_idle_ms` (3000) otherwise. The server sends both values to the clients. After the mesh is
+up most signaling runs over the peers, so a connected room costs one request per client every
+3 s. Every request is short, so the server needs no long-lived connections. Other settings:
+
+| Key | Default | Meaning |
+| --- | ------- | ------- |
+| `db` | `data/realtic.sqlite` | SQLite file |
+| `journal_mode` | `WAL` | use `DELETE` on network file systems, where WAL does not work |
+| `member_timeout_s` | 30 | a client that stops polling leaves the room after this |
+| `message_ttl_s` | 30 | undelivered messages expire |
+| `max_room_members` | 64 | |
+| `max_body_bytes`, `max_messages`, `max_message_bytes` | 262144, 64, 65536 | request limits |
+| `allowed_origins` | `[]` | CORS origins for use from another site, or `['*']` |
+| `log_file` | none | request log: one UTC line per request that carried messages or changed membership |
+| `log_polls` | false | log idle polls too |
+| `log_max_bytes`, `log_files` | 1048576, 5 | log rotation by size |
+
+Messages are delivered at most once: a request returns its client's pending messages and deletes
+exactly those rows in the same `BEGIN IMMEDIATE` transaction.
+
+`server/php/router.php` runs everything on PHP's built-in server for development
+(`php -S localhost:8080 server/php/router.php`); it is not meant for production.
+
+### Node Server (`server/node`)
+
+`node server/node/server.js [port]` runs a WebSocket server with rooms, presence and a
+`sendBeacon` endpoint (`<url>/beacon?id=&room=`, body `{ to, msg }`). It also serves the demos.
+Put it behind a TLS reverse proxy for `wss://`.
+
+### A Server of Your Own
+
+Any transport works (a message broker, Firebase). Rules:
 
 - Deliver each message at most once and delete what was delivered. realtic drops duplicates by
   message id, so redelivery is safe, but stale offers cost time.
-- Expose a POST endpoint for `navigator.sendBeacon` if you want `bye` on `pagehide` to reach the
-  others when the page closes (`<url>/beacon?id=&room=`, body `{ to, msg }`).
-- A signaling outage does not end live connections: they keep running and renegotiate over the
-  mesh. Only new pairs and pairs that need a new direct link wait for the server.
+- Accept a `navigator.sendBeacon` POST if `bye` on `pagehide` should reach the others when the
+  page closes.
 
 ## TURN over TLS on Port 443
 

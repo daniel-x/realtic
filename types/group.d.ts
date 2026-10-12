@@ -9,7 +9,8 @@ export class Group extends Emitter {
     /**
      * @param {object} options
      * @param {string} [options.selfId] fresh per page load (doc §7); generated when absent
-     * @param {import("./signaling/adapter.js").SignalingAdapter} options.signaling
+     * @param {import("./signaling/adapter.js").SignalingAdapter | import("./signaling/create.js").SignalingOptions} options.signaling
+     *   an adapter, or the settings of a reference server (see createSignaling)
      * @param {RTCIceServer[]} [options.iceServers]
      * @param {Partial<typeof import("./config.js").DEFAULTS>} [options.config]
      * @param {import("./util/clock.js").Clock} [options.clock]
@@ -18,7 +19,7 @@ export class Group extends Emitter {
      */
     constructor({ selfId, signaling, iceServers, config, clock, RTCPeerConnection: RTC, autoPeers }: {
         selfId?: string;
-        signaling: import("./signaling/adapter.js").SignalingAdapter;
+        signaling: import("./signaling/adapter.js").SignalingAdapter | import("./signaling/create.js").SignalingOptions;
         iceServers?: RTCIceServer[];
         config?: Partial<typeof import("./config.js").DEFAULTS>;
         clock?: import("./util/clock.js").Clock;
@@ -85,7 +86,7 @@ export class Group extends Emitter {
     }>;
     clock: import("./util/clock.js").Clock;
     iceServers: RTCIceServer[];
-    signaling: import("./signaling/adapter.js").SignalingAdapter;
+    signaling: import("./signaling/adapter.js").SignalingAdapter | import("./signaling/create.js").SignalingOptions;
     RTC: {
         new (configuration?: RTCConfiguration): RTCPeerConnection;
         prototype: RTCPeerConnection;

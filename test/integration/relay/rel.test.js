@@ -259,7 +259,7 @@ for (const pairing of pairings()) {
           await page.waitForFunction(() => window.t?.ready);
           const newId = `R${Math.random().toString(36).slice(2, 6)}`;
           await page.exposeFunction("__noop", () => {}).catch(() => {});
-          await page.evaluate((o) => window.t.start(o), { id: newId, signalingUrl: s.server.url, config: FAST, hooks: true });
+          await page.evaluate((o) => window.t.start(o), { id: newId, signaling: s.server.signaling, config: FAST, hooks: true });
           s.pages.delete(oldId);
           s.pages.set(newId, page);
           s.ids[2] = newId;

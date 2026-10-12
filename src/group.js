@@ -15,6 +15,7 @@ import { MediaManager } from "./media/media.js";
 import { collect as collectCaps, features } from "./media/capabilities.js";
 import { wants, normalize } from "./media/subscriptions.js";
 import { Routing } from "./routing/route.js";
+import { createSignaling } from "./signaling/create.js";
 
 const HELLO_RETRY_MS = 3000;
 const HELD_SIGNAL_LIMIT = 64;
@@ -50,7 +51,8 @@ export class Group extends Emitter {
   /**
    * @param {object} options
    * @param {string} [options.selfId] fresh per page load (doc §7); generated when absent
-   * @param {import("./signaling/adapter.js").SignalingAdapter} options.signaling
+   * @param {import("./signaling/adapter.js").SignalingAdapter | import("./signaling/create.js").SignalingOptions} options.signaling
+   *   an adapter, or the settings of a reference server (see createSignaling)
    * @param {RTCIceServer[]} [options.iceServers]
    * @param {Partial<typeof import("./config.js").DEFAULTS>} [options.config]
    * @param {import("./util/clock.js").Clock} [options.clock]
@@ -63,6 +65,7 @@ export class Group extends Emitter {
     this.config = makeConfig(config);
     this.clock = clock;
     this.iceServers = iceServers;
+    if (typeof signaling?.send !== "function") signaling = createSignaling(signaling, selfId);
     this.signaling = signaling;
     this.RTC = RTC;
     this.autoPeers = autoPeers;

@@ -38,6 +38,25 @@ Session ids: a message whose `s` is unknown and not retired means the other side
 connection; a side whose connection already has a remote description rebuilds too. Messages from
 retired sessions, and messages whose `rs` names a retired local session, are dropped.
 
+## 1a. Reference Server Transports
+
+PHP server (`signal.php`), one POST per poll, body sent as `text/plain`:
+
+```
+POST signal.php?room=<room>&id=<id>
+{ "send": [{ "to": "B2", "msg": { ... } }], "leave": false }
+-> { "messages": [{ "from": "B2", "msg": { ... } }], "members": ["A1", "B2"], "fastMs": 250, "idleMs": 3000 }
+```
+
+Presence is the difference between consecutive `members` lists. `leave: true` removes the client;
+`navigator.sendBeacon` uses the same request.
+
+Node server: WebSocket `ws(s)://host/signal?id=&room=`. Client frames `{ to, msg }`, server frames
+`{ from, msg }` and `{ presence: "join" | "leave", peer }`; beacons POST `{ to, msg }` to
+`/beacon?id=&room=`.
+
+Room and client ids match `[A-Za-z0-9_.-]{1,64}`.
+
 ## 2. Per-hop Control Channel `ctl`
 
 Each connection has negotiated data channels created by the impolite side: `ctl` (id 0, reliable

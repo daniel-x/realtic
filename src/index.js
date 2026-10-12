@@ -5,6 +5,8 @@ export { Publication } from "./media/media.js";
 export { attachMedia, TRACK_SWAPPED } from "./media/attach.js";
 export { MemoryHub } from "./signaling/adapter.js";
 export { WebSocketSignaling } from "./signaling/websocket.js";
+export { PollingSignaling } from "./signaling/polling.js";
+export { createSignaling } from "./signaling/create.js";
 export { Log, formatTime } from "./diag/log.js";
 export { HINT_TEXT } from "./diag/hints.js";
 export { DEFAULTS, PROTOCOL, VERSION, makeConfig } from "./config.js";

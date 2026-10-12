@@ -1,12 +1,16 @@
 // Scenario helper: one signaling server, N peers in pages of chosen browsers, optional netem
 // proxy between every directed pair, and helpers for waiting and assertions.
-import { createSignalingServer } from "../../../examples/server/server.js";
+import { createSignalingServer } from "../../../server/node/server.js";
+import { createPhpServer } from "./php-server.js";
 import { openPage, closeBrowsers, dedicatedBrowser } from "./browsers.js";
 import { NetemProxy } from "./netem.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 const ARTIFACTS = fileURLToPath(new URL("../../../test-results/", import.meta.url));
+
+/** Reference server the scenarios run against: "node" (default) or "php" ($REALTIC_SERVER). */
+export const SERVER = process.env.REALTIC_SERVER ?? "node";
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -66,7 +70,7 @@ export class Scenario {
   }
 
   async start() {
-    this.server = await createSignalingServer({});
+    this.server = SERVER === "php" ? await createPhpServer() : await createSignalingServer({});
     this.base = `http://localhost:${this.server.port}`;
     if (this.useProxy) {
       this.proxy = new NetemProxy();
@@ -92,7 +96,7 @@ export class Scenario {
     await page.waitForFunction(() => window.t?.ready);
     await page.evaluate((o) => window.t.start(o), {
       id,
-      signalingUrl: this.server.url,
+      signaling: this.server.signaling,
       config: { ...this.config, ...(this.peerConfig[id] ?? {}), ...(this.peerConfig[this.ids.length] ?? {}), ...extraConfig },
       iceServers: this.iceServers,
       hooks: !!this.proxy,

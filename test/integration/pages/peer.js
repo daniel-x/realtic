@@ -1,5 +1,5 @@
 // Test page controller: the Node test drives one peer per page through `window.t`.
-import { Group, WebSocketSignaling, attachMedia } from "../../../src/index.js";
+import { Group, attachMedia } from "../../../src/index.js";
 
 const BITS = 16;
 const BLOCK = 20;
@@ -22,8 +22,7 @@ window.addEventListener("unhandledrejection", (e) => t.errors.push(String(e.reas
 const now = () => Date.now();
 const ev = (type, data) => t.events.push({ time: now(), type, ...data });
 
-t.start = ({ id, signalingUrl, room = "test", config = {}, iceServers = [], hooks = false, autoPeers = false }) => {
-  const signaling = new WebSocketSignaling(signalingUrl, id, { room });
+t.start = ({ id, signaling: signalingOptions, room = "test", config = {}, iceServers = [], hooks = false, autoPeers = false }) => {
   const testHooks = {};
   if (hooks && window.__outgoingSignal) testHooks.outgoingSignal = (to, msg) => window.__outgoingSignal(to, msg);
   if (config.probeIceServers) testHooks.probeIceServers = config.probeIceServers;
@@ -33,7 +32,7 @@ t.start = ({ id, signalingUrl, room = "test", config = {}, iceServers = [], hook
   const cfg = { ...config, testHooks };
   if (config.relayDenyAll) cfg.allowRelay = () => false;
   for (const k of ["probeIceServers", "protocol", "caps", "relayDenyAll"]) delete cfg[k];
-  const group = new Group({ selfId: id, signaling, iceServers, config: cfg, autoPeers });
+  const group = new Group({ selfId: id, signaling: { ...signalingOptions, room }, iceServers, config: cfg, autoPeers });
   t.group = group;
   group.on("peer", (peer) => wirePeer(peer));
   group.on("peerleft", (peer, reason) => ev("peerleft", { peer: peer.id, reason }));

@@ -1,13 +1,13 @@
 // Mesh call demo: every page in the same room calls every other. Open
-// http://localhost:8080/examples/call/?room=test in several tabs or devices.
-import { Group, WebSocketSignaling, HINT_TEXT, attachMedia } from "../../src/index.js";
+// http://localhost:8080/examples/call/?room=test in several tabs or devices (add &server=node
+// for the Node server).
+import { Group, HINT_TEXT, attachMedia } from "../../src/index.js";
+import { demoSignaling } from "../signaling.js";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") ?? "demo";
 const selfId = crypto.randomUUID().slice(0, 8);
-const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/signal`;
-const signaling = new WebSocketSignaling(wsUrl, selfId, { room });
-const group = new Group({ selfId, signaling, autoPeers: true, iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+const group = new Group({ selfId, signaling: demoSignaling(room), autoPeers: true, iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
 document.getElementById("me").textContent = `you: ${selfId}, room: ${room}`;
 
 const tiles = document.getElementById("tiles");

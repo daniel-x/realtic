@@ -2,7 +2,7 @@
 // static files for the demos. Delivered messages are not stored, so nothing is redelivered
 // (doc §2.5). Test controls (down, delay, duplicate, redeliver) exist for the test harness.
 //
-// Usage: node examples/server/server.js [port]   then open http://localhost:<port>/examples/call/
+// Usage: node server/node/server.js [port]   then open http://localhost:<port>/examples/call/?server=node
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
@@ -113,6 +113,9 @@ export async function createSignalingServer({ port = 0, host = "127.0.0.1", log 
   return {
     port: actualPort,
     url: `ws://${host === "0.0.0.0" ? "localhost" : host}:${actualPort}/signal`,
+    get signaling() {
+      return { type: "websocket", url: this.url };
+    },
     controls,
     /** Takes the server down (closes all sockets, refuses new ones) or brings it back. */
     setDown(down) {
@@ -130,5 +133,5 @@ export async function createSignalingServer({ port = 0, host = "127.0.0.1", log 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const port = Number(process.argv[2] ?? 8080);
   const s = await createSignalingServer({ port, host: "0.0.0.0", log: true });
-  console.log(`${utc()} realtic signaling server on http://localhost:${s.port}/ (timestamps are UTC)`);
+  console.log(`${utc()} realtic signaling server on http://localhost:${s.port}/examples/call/?server=node (timestamps are UTC)`);
 }

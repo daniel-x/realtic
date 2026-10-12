@@ -1,10 +1,10 @@
 // Data-only demo: a reliable chat channel to every peer in the room.
-import { Group, WebSocketSignaling } from "../../src/index.js";
+import { Group } from "../../src/index.js";
+import { demoSignaling } from "../signaling.js";
 
 const room = new URLSearchParams(location.search).get("room") ?? "chat";
 const selfId = crypto.randomUUID().slice(0, 8);
-const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/signal`;
-const group = new Group({ selfId, signaling: new WebSocketSignaling(wsUrl, selfId, { room }), autoPeers: true });
+const group = new Group({ selfId, signaling: demoSignaling(room), autoPeers: true });
 const channels = new Map();
 const log = document.getElementById("log");
 
