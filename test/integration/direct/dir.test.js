@@ -11,7 +11,8 @@ import { TestStunServer } from "../harness/stun.js";
 after(() => closeBrowsers());
 
 const two = (pairing) => PAIRINGS[pairing].slice(0, 2);
-const PRIVATE_IPV4 = /\b(127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+)\b/;
+// Loopback, private and shared (CGNAT, 100.64.0.0/10) IPv4 addresses, the ones a test host has.
+const NON_PUBLIC_IPV4 = /\b(127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+)\b/;
 const near = (actual, expected, tolerance, what) =>
   assert.ok(Math.abs(actual - expected) <= tolerance, `${what}: ${actual} ms, expected ${expected} +- ${tolerance}`);
 
@@ -427,9 +428,9 @@ for (const pairing of pairings()) {
         const remote = await s.eval(0, (id) => window.t.requestLog(id), s.id(1));
         assert.ok(remote.ok && remote.entries > 0, JSON.stringify(remote));
         const redacted = JSON.stringify(await s.eval(1, () => window.t.report()));
-        assert.ok(!PRIVATE_IPV4.test(redacted), "no IP addresses in the redacted report");
+        assert.ok(!NON_PUBLIC_IPV4.test(redacted), "no IP addresses in the redacted report");
         const plain = JSON.stringify(await s.eval(0, () => window.t.report()));
-        assert.ok(PRIVATE_IPV4.test(plain), "unredacted report has addresses");
+        assert.ok(NON_PUBLIC_IPV4.test(plain), "unredacted report has addresses");
       });
     });
   });
