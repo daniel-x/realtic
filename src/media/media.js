@@ -107,11 +107,11 @@ export class MediaManager {
 
   /**
    * Brings a link's slots in line with the plan. Serialized per link.
-   * @param {import("../link/direct-link.js").DirectLink} link
+   * @param {import("../link/direct-peer-connection.js").ReatDirectPeerConnection} link
    */
   sync(link) {
-    let q = this.#queues.get(link.remoteId);
-    if (!q) this.#queues.set(link.remoteId, (q = new SerialQueue((e) => this.l.warn("media sync failed", { peer: link.remoteId, error: e?.message }))));
+    let q = this.#queues.get(link.reatRemoteId);
+    if (!q) this.#queues.set(link.reatRemoteId, (q = new SerialQueue((e) => this.l.warn("media sync failed", { peer: link.reatRemoteId, error: e?.message }))));
     if (q.pending) return;
     q.pending = true;
     q.push(async () => {
@@ -121,17 +121,17 @@ export class MediaManager {
   }
 
   async #sync(link) {
-    if (!link.ctlOpen) return;
+    if (!link.reatCtlOpen) return;
     const plan = this.#group.routing.mediaRelay.plan(link);
-    let sending = this.#sending.get(link.remoteId);
-    if (!sending) this.#sending.set(link.remoteId, (sending = new Map()));
+    let sending = this.#sending.get(link.reatRemoteId);
+    if (!sending) this.#sending.set(link.reatRemoteId, (sending = new Map()));
     for (const [key, s] of sending) {
-      if (!link.ownsSlot(s.slot)) sending.delete(key);
+      if (!link.reatOwnsSlot(s.slot)) sending.delete(key);
     }
     let changed = false;
     for (const [key, s] of [...sending]) {
       if (plan.some((p) => p.key === key)) continue;
-      link.releaseSendSlot(s.slot);
+      link.reatReleaseSendSlot(s.slot);
       sending.delete(key);
       changed = true;
     }
@@ -140,12 +140,12 @@ export class MediaManager {
       if (!s) {
         let slot;
         try {
-          slot = await link.acquireSendSlot(p.info.kind, p.key);
+          slot = await link.reatAcquireSendSlot(p.info.kind, p.key);
         } catch (error) {
-          this.l.warn("no send slot", { peer: link.remoteId, key: p.key, error: error.message });
+          this.l.warn("no send slot", { peer: link.reatRemoteId, key: p.key, error: error.message });
           continue;
         }
-        if (!link.ownsSlot(slot)) continue;
+        if (!link.reatOwnsSlot(slot)) continue;
         s = { slot, info: p.info, active: null, track: null, applied: null };
         sending.set(p.key, s);
         changed = true;
@@ -169,8 +169,8 @@ export class MediaManager {
       sending.announced = true;
       const mids = {};
       for (const s of sending.values()) if (s.slot.tr.mid != null) mids[s.slot.tr.mid] = s.info;
-      link.sendCtl({ t: "mid-map", mids });
-      this.l.debug("mid-map sent", { peer: link.remoteId, count: Object.keys(mids).length });
+      link.reatSendCtl({ t: "mid-map", mids });
+      this.l.debug("mid-map sent", { peer: link.reatRemoteId, count: Object.keys(mids).length });
     }
   }
 
@@ -190,21 +190,21 @@ export class MediaManager {
 
   /**
    * Handles `mid-map` from a neighbor.
-   * @param {import("../link/direct-link.js").DirectLink} link
+   * @param {import("../link/direct-peer-connection.js").ReatDirectPeerConnection} link
    * @param {{mids: Record<string, {origin: string, pub: string, tag: string, kind: string}>}} msg
    */
   onMidMap(link, msg) {
     const mids = new Map(Object.entries(msg.mids ?? {}));
-    this.#remoteMids.set(link.remoteId, mids);
+    this.#remoteMids.set(link.reatRemoteId, mids);
     this.resolve(link);
   }
 
   /** Re-resolves announced mids to tracks, e.g. after a negotiation round. */
   resolve(link) {
-    const mids = this.#remoteMids.get(link.remoteId);
+    const mids = this.#remoteMids.get(link.reatRemoteId);
     if (!mids) return;
-    let attached = this.#attached.get(link.remoteId);
-    if (!attached) this.#attached.set(link.remoteId, (attached = new Map()));
+    let attached = this.#attached.get(link.reatRemoteId);
+    if (!attached) this.#attached.set(link.reatRemoteId, (attached = new Map()));
     for (const [mid, a] of [...attached]) {
       const now = mids.get(mid);
       if (now && now.origin === a.info.origin && now.pub === a.info.pub) continue;
@@ -213,7 +213,7 @@ export class MediaManager {
     }
     for (const [mid, info] of mids) {
       if (attached.has(mid)) continue;
-      const tr = link.transceiver(mid);
+      const tr = link.reatTransceiver(mid);
       if (!tr || !tr.receiver.track) continue;
       attached.set(mid, { info, track: tr.receiver.track });
       this.#attach(link, info, tr.receiver.track);
@@ -221,15 +221,15 @@ export class MediaManager {
   }
 
   #attach(link, info, track) {
-    this.l.info("remote track", { via: link.remoteId, origin: info.origin, pub: info.pub, kind: info.kind, tag: info.tag });
+    this.l.info("remote track", { via: link.reatRemoteId, origin: info.origin, pub: info.pub, kind: info.kind, tag: info.tag });
     if (info.origin !== this.#group.selfId && this.#group.subscribed(info.origin, info.kind, info.tag)) {
-      this.streams.attach(info, link.remoteId, track);
+      this.streams.attach(info, link.reatRemoteId, track);
     }
     this.#group.routing.mediaRelay.receivedSource(link, info, track);
   }
 
   #detach(link, info) {
-    this.streams.detach(info.origin, info.pub, link.remoteId);
+    this.streams.detach(info.origin, info.pub, link.reatRemoteId);
     this.#group.routing.mediaRelay.receivedSourceGone(link, info);
   }
 }

@@ -29,7 +29,7 @@ export class Routing {
     peerGone(peerId: any): void;
     linkRebuilt(peerId: any): void;
     linkOpen(link: any): void;
-    linkState(link: any, state: any, reason: any): void;
+    linkState(peerId: any, state: any, reason: any): void;
     onMetrics(link: any): void;
     tick(): void;
     onCtl(link: any, msg: any): void;

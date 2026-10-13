@@ -24,7 +24,7 @@ export class SignalingRouter {
    * @param {object} options
    * @param {string} options.selfId
    * @param {() => import("./adapter.js").SignalingAdapter} options.adapter
-   * @param {(id: string) => import("../link/direct-link.js").DirectLink | undefined} options.link
+   * @param {(id: string) => import("../link/direct-peer-connection.js").ReatDirectPeerConnection | undefined} options.link
    * @param {(target: string) => string | undefined} options.relayFor neighbor that has a live link to target
    * @param {ReturnType<import("../diag/log.js").Log["scope"]>} options.log
    * @param {{outgoingSignal?: (to: string, msg: object) => (object | Promise<object>)}} [options.hooks]
@@ -57,7 +57,7 @@ export class SignalingRouter {
     const paths = serverOnly ? ["server"] : this.#paths(to, full.t);
     for (const path of paths) {
       if (path === "server") this.#toServer(to, full);
-      else this.link(path)?.sendCtl({ t: "sig", msg: full });
+      else this.link(path)?.reatSendCtl({ t: "sig", msg: full });
     }
     this.l.debug("signal sent", { t: full.t, to, id: full.id, size: full.sdp?.length ?? 0, paths });
   }
@@ -65,9 +65,9 @@ export class SignalingRouter {
   #paths(to, t) {
     if (SERVER_ONLY.has(t)) return ["server"];
     const direct = this.link(to);
-    if (direct?.ctlOpen) {
-      if (direct.healthy && direct.state === "connected") return BOTH_WHEN_UP.has(t) ? [to, "server"] : [to];
-      if (direct.usable) return [to, "server"];
+    if (direct?.reatCtlOpen) {
+      if (direct.reatHealthy && direct.reatConnection.directState === "connected") return BOTH_WHEN_UP.has(t) ? [to, "server"] : [to];
+      if (direct.reatUsable) return [to, "server"];
     }
     if (SERVER_OR_DIRECT.has(t)) return ["server"];
     const via = this.relayFor(to);

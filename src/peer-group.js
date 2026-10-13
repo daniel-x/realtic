@@ -6,7 +6,6 @@ import { Log } from "./diag/log.js";
 import { diagnosticReport } from "./diag/report.js";
 import { Dedupe } from "./signaling/queue.js";
 import { SignalingRouter, RELAYABLE } from "./signaling/router.js";
-import { DirectLink } from "./link/direct-link.js";
 import { NetworkWatcher } from "./link/network.js";
 import { ReatPeerConnection } from "./peer-connection.js";
 import { decode } from "./transport/framing.js";
@@ -36,9 +35,10 @@ export class ReatPeerGroup extends Emitter {
    */
   connections = new Map();
   /**
-   * The direct links of the connections that have one, i.e. every existing RTCPeerConnection.
-   * Each link is owned by its connection (`connection.direct`).
-   * @type {Map<string, DirectLink>}
+   * The current ReatDirectPeerConnection of each connection that has one, i.e. every existing
+   * RTCPeerConnection. Each is owned by its ReatPeerConnection (`connection.direct`), which
+   * replaces the entry on a rebuild.
+   * @type {Map<string, import("./link/direct-peer-connection.js").ReatDirectPeerConnection>}
    */
   directConns = new Map();
   #pendingHellos = new Map();
@@ -94,16 +94,6 @@ export class ReatPeerGroup extends Emitter {
     this.media = new MediaManager(this);
     this.routing = new Routing(this);
     this.network = new NetworkWatcher(this);
-    this.linkCtx = {
-      selfId,
-      config: this.config,
-      clock,
-      log: this.log,
-      RTCPeerConnection: RTC,
-      sendSignal: (to, msg) => this.router.send(to, msg),
-      rtcConfig: (link, withTurn) => this.rtcConfig(withTurn),
-      canAddTurn: (link) => this.routing.canAddTurn(link.remoteId),
-    };
     signaling.onmessage = (from, msg) => this.#onServerMessage(from, msg);
     if ("onpresence" in signaling || signaling.onpresence === undefined) signaling.onpresence = (event) => this.#onPresence(event);
     this.log.write("info", "group", "group created", { selfId, version: VERSION, protocol: PROTOCOL, userAgent: globalThis.navigator?.userAgent });
@@ -189,8 +179,7 @@ export class ReatPeerGroup extends Emitter {
     this.#heldSignals.delete(peerId);
     this.#stopHelloRetry(peerId);
     this.routing.peerGone(peerId);
-    if (peer?.direct) {
-      this.directConns.delete(peerId);
+    if (peer?.directStarted) {
       this.#indexTables.delete(peerId);
       this.media.resetLink(peerId);
       peer.closeDirect(reason);
@@ -278,30 +267,33 @@ export class ReatPeerGroup extends Emitter {
 
   #ensureLink(peerId) {
     const conn = this.connections.get(peerId);
-    if (conn.direct) return conn.direct;
-    const link = new DirectLink(this.linkCtx, peerId);
-    link.onListenerError = this.onListenerError;
-    conn.direct = link;
-    this.directConns.set(peerId, link);
+    if (conn.directStarted) return;
     this.#indexTables.set(peerId, newIndexTable(this.selfId, peerId));
-    link.on("state", (state, reason) => this.routing.linkState(link, state, reason));
-    link.on("ctl", (msg) => this.#onLinkCtl(link, msg));
-    link.on("envelope", (bytes, key) => this.#onEnvelope(link, bytes, key));
-    link.on("open", () => this.#onLinkOpen(link));
-    link.on("rebuilt", () => {
-      this.#indexTables.set(peerId, newIndexTable(this.selfId, peerId));
-      this.media.resetLink(peerId);
-      this.routing.linkRebuilt(peerId);
+    const guard = (name, fn) => (...args) => {
+      try {
+        fn(...args);
+      } catch (error) {
+        this.onListenerError(error, name);
+      }
+    };
+    conn.startDirect({
+      state: guard("state", (state, reason) => this.routing.linkState(peerId, state, reason)),
+      ctl: guard("ctl", (link, msg) => this.#onLinkCtl(link, msg)),
+      envelope: guard("envelope", (link, bytes, key) => this.#onEnvelope(link, bytes, key)),
+      open: guard("open", (link) => this.#onLinkOpen(link)),
+      rebuilt: guard("rebuilt", () => {
+        this.#indexTables.set(peerId, newIndexTable(this.selfId, peerId));
+        this.media.resetLink(peerId);
+        this.routing.linkRebuilt(peerId);
+      }),
+      negotiated: guard("negotiated", (link) => this.media.resolve(link)),
+      remotetrack: guard("remotetrack", (link) => this.media.resolve(link)),
+      metrics: guard("metrics", (link, m, stats) => this.routing.onMetrics(link, m, stats)),
+      drain: guard("drain", (link) => this.#onDrain(link)),
     });
-    link.on("negotiated", () => this.media.resolve(link));
-    link.on("remotetrack", () => this.media.resolve(link));
-    link.on("metrics", (m, stats) => this.routing.onMetrics(link, m, stats));
-    link.on("drain", () => this.#onDrain(link));
-    link.start();
     const held = this.#heldSignals.get(peerId) ?? [];
     this.#heldSignals.delete(peerId);
-    for (const msg of held) link.handleSignal(msg);
-    return link;
+    for (const msg of held) conn.handleDirectSignal(msg);
   }
 
   // Signaling in ---------------------------------------------------------------------------------
@@ -317,53 +309,53 @@ export class ReatPeerGroup extends Emitter {
       this.l.debug("dropped duplicate signal", { t: msg.t, id: msg.id, from });
       return;
     }
-    if (this.hooks.incomingSignal && this.hooks.incomingSignal(from, msg, viaLink?.remoteId ?? "server") === false) return;
-    this.l.debug("signal received", { t: msg.t, from, id: msg.id, path: viaLink ? `mesh:${viaLink.remoteId}` : "server" });
+    if (this.hooks.incomingSignal && this.hooks.incomingSignal(from, msg, viaLink?.reatRemoteId ?? "server") === false) return;
+    this.l.debug("signal received", { t: msg.t, from, id: msg.id, path: viaLink ? `mesh:${viaLink.reatRemoteId}` : "server" });
     if (msg.t === "hello") return void this.#onHello(from, msg);
     if (msg.t === "bye") {
       if (this.connections.has(from)) this.#dropPeer(from, msg.reason === "leave" ? "left" : msg.reason ?? "left");
       return;
     }
-    const link = this.directConns.get(from);
-    if (!link) {
+    const conn = this.connections.get(from);
+    if (!conn?.directStarted) {
       let held = this.#heldSignals.get(from);
       if (!held) this.#heldSignals.set(from, (held = []));
       if (held.length < HELD_SIGNAL_LIMIT) held.push(msg);
-      this.l.debug("signal held until the link exists", { t: msg.t, from });
+      this.l.debug("signal held until the direct connection exists", { t: msg.t, from });
       return;
     }
-    link.handleSignal(msg);
+    conn.handleDirectSignal(msg);
   }
 
   #onMeshSignal(link, msg) {
     if (!msg || typeof msg !== "object" || typeof msg.from !== "string") return;
     if (msg.to === this.selfId) {
-      if (msg.from !== link.remoteId && MESH_ONLY_REJECT.has(msg.t)) {
-        this.l.warn("rejected relayed security-relevant signal", { t: msg.t, from: msg.from, via: link.remoteId });
+      if (msg.from !== link.reatRemoteId && MESH_ONLY_REJECT.has(msg.t)) {
+        this.l.warn("rejected relayed security-relevant signal", { t: msg.t, from: msg.from, via: link.reatRemoteId });
         return;
       }
-      if (msg.from !== link.remoteId && !this.connections.has(msg.from)) return;
+      if (msg.from !== link.reatRemoteId && !this.connections.has(msg.from)) return;
       this.#onSignal(msg.from, msg, link);
       return;
     }
-    if (msg.from !== link.remoteId || !RELAYABLE.has(msg.t)) {
+    if (msg.from !== link.reatRemoteId || !RELAYABLE.has(msg.t)) {
       this.log.write("warn", "relay", "refused to forward signal", { t: msg.t, from: msg.from, to: msg.to });
       return;
     }
     const next = this.directConns.get(msg.to);
-    if (!next?.ctlOpen || !this.#helloDone.has(msg.to) || !this.#helloDone.has(msg.from)) return;
+    if (!next?.reatCtlOpen || !this.#helloDone.has(msg.to) || !this.#helloDone.has(msg.from)) return;
     this.log.write("debug", "relay", "forward signal", { t: msg.t, from: msg.from, to: msg.to });
-    next.sendCtl({ t: "sig", msg });
+    next.reatSendCtl({ t: "sig", msg });
   }
 
   // Links ---------------------------------------------------------------------------------------
 
   #onLinkOpen(link) {
-    const table = this.#indexTables.get(link.remoteId);
+    const table = this.#indexTables.get(link.reatRemoteId);
     const map = {};
     for (const [id, idx] of table.local) if (idx > 1) map[idx] = id;
-    if (Object.keys(map).length) link.sendCtl({ t: "index-map", map, full: true });
-    if (typeof document !== "undefined" && document.visibilityState === "hidden") link.setBackground(true);
+    if (Object.keys(map).length) link.reatSendCtl({ t: "index-map", map, full: true });
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") link.reatSetBackground(true);
     this.routing.linkOpen(link);
     this.media.sync(link);
   }
@@ -374,10 +366,10 @@ export class ReatPeerGroup extends Emitter {
         this.#onMeshSignal(link, msg.msg);
         return;
       case "index-map": {
-        const table = this.#indexTables.get(link.remoteId);
+        const table = this.#indexTables.get(link.reatRemoteId);
         if (!table) return;
         if (msg.full) {
-          table.remote = new Map([[0, link.remoteId], [1, this.selfId]]);
+          table.remote = new Map([[0, link.reatRemoteId], [1, this.selfId]]);
         }
         for (const [idx, id] of Object.entries(msg.map ?? {})) {
           const n = Number(idx);
@@ -398,47 +390,47 @@ export class ReatPeerGroup extends Emitter {
 
   /**
    * The index this side uses for `peerId` on `link`, allocating and announcing a new one.
-   * @param {DirectLink} link
+   * @param {import("./link/direct-peer-connection.js").ReatDirectPeerConnection} link
    * @param {string} peerId
    */
   localIndex(link, peerId) {
-    const table = this.#indexTables.get(link.remoteId);
+    const table = this.#indexTables.get(link.reatRemoteId);
     let idx = table.local.get(peerId);
     if (idx !== undefined) return idx;
     idx = table.next++;
     if (idx > 255) throw new RangeError("index table full");
     table.local.set(peerId, idx);
-    link.sendCtl({ t: "index-map", map: { [idx]: peerId } });
+    link.reatSendCtl({ t: "index-map", map: { [idx]: peerId } });
     return idx;
   }
 
   /** Peer id for an index in the neighbor's table, or undefined. */
   remoteIndex(link, idx) {
-    return this.#indexTables.get(link.remoteId)?.remote.get(idx);
+    return this.#indexTables.get(link.reatRemoteId)?.remote.get(idx);
   }
 
   #onEnvelope(link, bytes, key) {
     const e = decode(bytes);
     if (!e) return;
     if (e.version !== this.protocol.major) {
-      this.log.write("warn", "channel", "dropped envelope with other major version", { version: e.version }, { peer: link.remoteId });
+      this.log.write("warn", "channel", "dropped envelope with other major version", { version: e.version }, { peer: link.reatRemoteId });
       return;
     }
     const src = this.remoteIndex(link, e.srcIdx);
     const dst = this.remoteIndex(link, e.dstIdx);
     if (!src || !dst) {
-      this.log.write("debug", "channel", "dropped envelope with unknown index", { srcIdx: e.srcIdx, dstIdx: e.dstIdx }, { peer: link.remoteId });
+      this.log.write("debug", "channel", "dropped envelope with unknown index", { srcIdx: e.srcIdx, dstIdx: e.dstIdx }, { peer: link.reatRemoteId });
       return;
     }
     if (dst === this.selfId) {
       const peer = this.connections.get(src);
       if (!peer) return;
-      const relayed = src !== link.remoteId;
-      if (relayed && !this.routing.acceptsRelayed(src, link.remoteId)) {
-        this.log.write("debug", "relay", "dropped envelope from unknown relay flow", { via: link.remoteId }, { peer: src });
+      const relayed = src !== link.reatRemoteId;
+      if (relayed && !this.routing.acceptsRelayed(src, link.reatRemoteId)) {
+        this.log.write("debug", "relay", "dropped envelope from unknown relay flow", { via: link.reatRemoteId }, { peer: src });
         return;
       }
-      peer.receiveEnvelope(e, relayed, link.remoteId);
+      peer.receiveEnvelope(e, relayed, link.reatRemoteId);
       return;
     }
     this.routing.forward(link, src, dst, bytes, e, key);
@@ -447,7 +439,7 @@ export class ReatPeerGroup extends Emitter {
   #onDrain(link) {
     for (const peer of this.connections.values()) {
       const r = peer.routeInfo;
-      if (r && (r.kind === "direct" ? peer.id : r.via) === link.remoteId) peer.pump();
+      if (r && (r.kind === "direct" ? peer.id : r.via) === link.reatRemoteId) peer.pump();
     }
   }
 
@@ -462,7 +454,7 @@ export class ReatPeerGroup extends Emitter {
 
   /** @internal re-plans media on all open links */
   mediaChanged() {
-    for (const link of this.directConns.values()) if (link.ctlOpen) this.media.sync(link);
+    for (const link of this.directConns.values()) if (link.reatCtlOpen) this.media.sync(link);
   }
 
   /** True when this side wants `origin`'s track of `kind` and `tag`. */
@@ -523,7 +515,7 @@ export class ReatPeerGroup extends Emitter {
 
   #onVisibility(hidden) {
     this.log.write("info", "group", hidden ? "page hidden" : "page visible");
-    for (const link of this.directConns.values()) if (link.ctlOpen) link.setBackground(hidden);
+    for (const link of this.directConns.values()) if (link.reatCtlOpen) link.reatSetBackground(hidden);
     for (const peer of this.connections.values()) {
       if (peer.routeInfo?.kind === "relay") peer.session.sendControl({ t: hidden ? "bg" : "fg" });
     }
@@ -536,12 +528,12 @@ export class ReatPeerGroup extends Emitter {
   /** Runs a liveness check on all links at once; restarts ICE on slow or stale ones. */
   checkLinks(reason) {
     this.log.write("info", "group", "checking links", { reason });
-    for (const link of this.directConns.values()) link.checkNow(reason);
+    for (const conn of this.connections.values()) conn.checkDirect(reason);
   }
 
   /** ICE restart on every live direct link (decision D15). */
   restartAll(reason) {
-    for (const link of this.directConns.values()) if (link.ctlOpen) link.iceRestart(reason);
+    for (const link of this.directConns.values()) if (link.reatCtlOpen) link.reatConnection.directIceRestart(reason);
   }
 
   /** Sends `bye` to all peers via mesh and signaling. Usable from `pagehide`. */
@@ -550,7 +542,7 @@ export class ReatPeerGroup extends Emitter {
     for (const id of this.connections.keys()) {
       const msg = { t: "bye", reason: "leave" };
       const link = this.directConns.get(id);
-      if (link?.ctlOpen) link.sendCtl({ t: "sig", msg: { ...msg, from: this.selfId, to: id, id: randomId(12) } });
+      if (link?.reatCtlOpen) link.reatSendCtl({ t: "sig", msg: { ...msg, from: this.selfId, to: id, id: randomId(12) } });
       this.router.beacon(id, msg);
     }
     this.close("leave");

@@ -49,7 +49,7 @@ happen inside it.
 | `lastError`, `hint` | failure details; hints in `HINT_TEXT` |
 | `createChannel(label, init)` | end to end data channel, `init`: `ordered`, `maxRetransmits`, `maxPacketLifeTime`, `protocol` |
 | `requestLog()` | promise of the remote side's diagnostic report (needs its `shareLogWithPeers`) |
-| `rtcPeerConnection` | the current `RTCPeerConnection` to this peer, null without a direct one; for advanced use |
+| `rtcPeerConnection` | the current `RTCPeerConnection` to this peer (a `ReatDirectPeerConnection` subclass), null without a direct one; a rebuild replaces it; for advanced use |
 
 Events: `statechange` (state, reason), `routechange` (route), `channel` (ReatChannel),
 `track` ({ track, stream, tag, kind, origin, pub }), `trackreplaced` ({ track, oldTrack, stream,

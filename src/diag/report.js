@@ -29,9 +29,8 @@ function iceServersWithoutCredentials(servers) {
 export async function diagnosticReport(group) {
   const stats = {};
   for (const [id, link] of group.directConns) {
-    if (!link.pc) continue;
     try {
-      const s = await readStats(link.pc);
+      const s = await readStats(link);
       stats[id] = [...s.values()].filter((x) => x.type !== "certificate" && x.type !== "codec");
     } catch {
       stats[id] = "unavailable";
@@ -45,7 +44,7 @@ export async function diagnosticReport(group) {
     config: plainConfig(group.config),
     iceServers: iceServersWithoutCredentials(group.iceServers),
     peers: [...group.connections.values()].map((p) => ({ id: p.id, state: p.state, reason: p.reason, route: p.route, lastError: p.lastError, hint: p.hint })),
-    links: [...group.directConns.values()].map((l) => ({ peer: l.remoteId, state: l.state, reason: l.reason, session: l.session, liveness: l.liveness, metrics: l.metrics, lastError: l.lastError, hint: l.hint, lastDump: l.lastDump })),
+    links: [...group.connections.values()].filter((c) => c.directStarted).map((c) => ({ peer: c.id, state: c.directState, reason: c.directReason, session: c.direct?.reatSession, liveness: c.direct?.reatLiveness, metrics: c.direct?.reatMetrics, lastError: c.directError, hint: c.directHint, lastDump: c.lastDump })),
     routing: group.getStats(),
     media: group.media.streams.list(),
     stats,

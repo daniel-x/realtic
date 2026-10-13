@@ -15,11 +15,9 @@ export class ReatPeerConnection extends Emitter {
      * @param {string} id
      */
     constructor(group: object, id: string);
-    /**
-     * The direct link to this peer, owned by this connection; null until hello completed.
-     * @type {import("./link/direct-link.js").DirectLink | null}
-     */
-    direct: import("./link/direct-link.js").DirectLink | null;
+    /** Last error text and hint of the direct connection. */
+    directError: any;
+    directHint: any;
     /** Remote hello (protocol, keys, capabilities), once received. */
     remote: any;
     /** End to end AES-GCM key for relayed data. */
@@ -43,8 +41,13 @@ export class ReatPeerConnection extends Emitter {
     };
     /** Internal route descriptor. */
     get routeInfo(): any;
-    /** The current RTCPeerConnection of the direct link, or null without one; for advanced use. */
-    get rtcPeerConnection(): RTCPeerConnection;
+    /**
+     * The current ReatDirectPeerConnection to this peer (an RTCPeerConnection), or null without one.
+     * A rebuild replaces it.
+     */
+    get direct(): any;
+    /** The current RTCPeerConnection to this peer, or null without one; for advanced use. */
+    get rtcPeerConnection(): any;
     /** End to end liveness monitor of relayed routes. */
     get e2e(): LivenessMonitor;
     /**
@@ -94,6 +97,44 @@ export class ReatPeerConnection extends Emitter {
     receiveEnvelope(e: import("./transport/framing.js").Envelope, relayed: boolean, via: string): void;
     /** Lets end to end senders continue after a transport drained. */
     pump(): void;
+    /** True once the direct connection was started (after hello). */
+    get directStarted(): boolean;
+    /** `connecting` | `connected` | `slow` | `recovering` | `unreachable` | `closed` */
+    get directState(): string;
+    /** Reason of the last direct state change. */
+    get directReason(): string;
+    /** The last candidate pair dump. */
+    get lastDump(): any;
+    /**
+     * Starts the direct connection. `hooks` are the group's handlers; each gets the current
+     * ReatDirectPeerConnection first.
+     * @param {object} hooks
+     */
+    startDirect(hooks: object): void;
+    /**
+     * Handles a signaling message of the direct connection (from the server or the mesh).
+     * @param {object} msg
+     */
+    handleDirectSignal(msg: object): void;
+    /**
+     * ICE restart on a working direct connection, e.g. after a network change (decision D15). The
+     * impolite side restarts, the polite side asks for it.
+     * @param {string} reason
+     */
+    directIceRestart(reason: string): void;
+    /** Re-checks liveness now and restarts ICE when the direct connection is slow or stale. */
+    checkDirect(reason: any): void;
+    /**
+     * Rebuilds the direct connection now. With `silent`, the old one is abandoned without closing
+     * it, so the remote side learns of the rebuild only from the new session id (test hook for
+     * doc §3.6).
+     */
+    rebuildDirect(reason?: string, silent?: boolean): void;
+    /**
+     * Closes the direct connection for good.
+     * @param {string} reason
+     */
+    closeDirect(reason: string): void;
     /**
      * Sets the state, emitting `statechange` on change.
      * @param {string} state
@@ -102,11 +143,6 @@ export class ReatPeerConnection extends Emitter {
     setState(state: string, reason: string): void;
     /** True after the peer was connected once. */
     get everConnected(): boolean;
-    /**
-     * Closes the direct link and drops it.
-     * @param {string} reason
-     */
-    closeDirect(reason: string): void;
     /**
      * Closes the connection: `closing` before anything is shut down, `closed` at the end.
      * @param {string} [reason]

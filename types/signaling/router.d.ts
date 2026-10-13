@@ -16,7 +16,7 @@ export class SignalingRouter {
      * @param {object} options
      * @param {string} options.selfId
      * @param {() => import("./adapter.js").SignalingAdapter} options.adapter
-     * @param {(id: string) => import("../link/direct-link.js").DirectLink | undefined} options.link
+     * @param {(id: string) => import("../link/direct-peer-connection.js").ReatDirectPeerConnection | undefined} options.link
      * @param {(target: string) => string | undefined} options.relayFor neighbor that has a live link to target
      * @param {ReturnType<import("../diag/log.js").Log["scope"]>} options.log
      * @param {{outgoingSignal?: (to: string, msg: object) => (object | Promise<object>)}} [options.hooks]
@@ -24,7 +24,7 @@ export class SignalingRouter {
     constructor({ selfId, adapter, link, relayFor, log, hooks }: {
         selfId: string;
         adapter: () => import("./adapter.js").SignalingAdapter;
-        link: (id: string) => import("../link/direct-link.js").DirectLink | undefined;
+        link: (id: string) => import("../link/direct-peer-connection.js").ReatDirectPeerConnection | undefined;
         relayFor: (target: string) => string | undefined;
         log: ReturnType<import("../diag/log.js").Log["scope"]>;
         hooks?: {
@@ -33,7 +33,7 @@ export class SignalingRouter {
     });
     selfId: string;
     adapter: () => import("./adapter.js").SignalingAdapter;
-    link: (id: string) => import("../link/direct-link.js").DirectLink | undefined;
+    link: (id: string) => import("../link/direct-peer-connection.js").ReatDirectPeerConnection | undefined;
     relayFor: (target: string) => string | undefined;
     l: {
         debug: (msg: any, data: any) => void;

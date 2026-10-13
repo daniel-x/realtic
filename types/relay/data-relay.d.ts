@@ -18,10 +18,10 @@ export class DataRelay {
     get rate(): number;
     /**
      * Handles `relay-request` from the origin end.
-     * @param {import("../link/direct-link.js").DirectLink} link link to the origin
+     * @param {import("../link/direct-peer-connection.js").ReatDirectPeerConnection} link link to the origin
      * @param {{flow: string, origin: string, target: string, role: string, kinds?: string[]}} msg
      */
-    onRequest(link: import("../link/direct-link.js").DirectLink, msg: {
+    onRequest(link: import("../link/direct-peer-connection.js").ReatDirectPeerConnection, msg: {
         flow: string;
         origin: string;
         target: string;
@@ -30,30 +30,30 @@ export class DataRelay {
     }): void;
     /**
      * Handles `relay-close` from either end and forwards it to the other end.
-     * @param {import("../link/direct-link.js").DirectLink} link
+     * @param {import("../link/direct-peer-connection.js").ReatDirectPeerConnection} link
      * @param {{flow: string}} msg
      */
-    onClose(link: import("../link/direct-link.js").DirectLink, msg: {
+    onClose(link: import("../link/direct-peer-connection.js").ReatDirectPeerConnection, msg: {
         flow: string;
     }): void;
     /**
      * Handles `standby-activate` from the origin end: the standby becomes active.
-     * @param {import("../link/direct-link.js").DirectLink} link
+     * @param {import("../link/direct-peer-connection.js").ReatDirectPeerConnection} link
      * @param {{flow: string}} msg
      */
-    onActivate(link: import("../link/direct-link.js").DirectLink, msg: {
+    onActivate(link: import("../link/direct-peer-connection.js").ReatDirectPeerConnection, msg: {
         flow: string;
     }): void;
     /**
      * Forwards an envelope of an accepted flow. Drops everything else.
-     * @param {import("../link/direct-link.js").DirectLink} link incoming link
+     * @param {import("../link/direct-peer-connection.js").ReatDirectPeerConnection} link incoming link
      * @param {string} src origin peer id
      * @param {string} dst destination peer id
      * @param {Uint8Array} bytes
      * @param {import("../transport/framing.js").Envelope} e
      * @param {string} key transport key
      */
-    forward(link: import("../link/direct-link.js").DirectLink, src: string, dst: string, bytes: Uint8Array, e: import("../transport/framing.js").Envelope, key: string): void;
+    forward(link: import("../link/direct-peer-connection.js").ReatDirectPeerConnection, src: string, dst: string, bytes: Uint8Array, e: import("../transport/framing.js").Envelope, key: string): void;
     /**
      * The link to an end of a relayed flow changed state: tell the far end (plan section 6.2).
      * @param {string} peerId the neighbor whose link changed

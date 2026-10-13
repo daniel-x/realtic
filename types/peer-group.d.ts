@@ -32,11 +32,12 @@ export class ReatPeerGroup extends Emitter {
      */
     connections: Map<string, ReatPeerConnection>;
     /**
-     * The direct links of the connections that have one, i.e. every existing RTCPeerConnection.
-     * Each link is owned by its connection (`connection.direct`).
-     * @type {Map<string, DirectLink>}
+     * The current ReatDirectPeerConnection of each connection that has one, i.e. every existing
+     * RTCPeerConnection. Each is owned by its ReatPeerConnection (`connection.direct`), which
+     * replaces the entry on a rebuild.
+     * @type {Map<string, import("./link/direct-peer-connection.js").ReatDirectPeerConnection>}
      */
-    directConns: Map<string, DirectLink>;
+    directConns: Map<string, import("./link/direct-peer-connection.js").ReatDirectPeerConnection>;
     selfId: string;
     config: Readonly<{
         HEARTBEAT_IDLE_MS: 500;
@@ -119,75 +120,6 @@ export class ReatPeerGroup extends Emitter {
     media: MediaManager;
     routing: Routing;
     network: NetworkWatcher;
-    linkCtx: {
-        selfId: string;
-        config: Readonly<{
-            HEARTBEAT_IDLE_MS: 500;
-            SLOW_CONNECTION_MS: 1000;
-            STALE_CONNECTION_MS: 5000;
-            LIVENESS_CHECK_INTERVAL_MS: 250;
-            CHANNEL_OPEN_TIMEOUT_MS: 8000;
-            BACKGROUND_SLOW_MS: 12000;
-            BACKGROUND_STALE_MS: 20000;
-            connectTimeoutMs: 12000;
-            iceRestartBackoffMs: number[];
-            rebuildAttempts: 1;
-            recoveryStepTimeoutMs: 8000;
-            reprobeIntervalsMs: number[];
-            networkProbeIntervalMs: 10000;
-            candidateBatchMs: 50;
-            linkStateIntervalMs: 2000;
-            statsIntervalMs: 1000;
-            switchThreshold: 0.25;
-            switchHoldMs: 3000;
-            earlySwitchIntervalMs: 10000;
-            maxRelayLoad: 0.8;
-            maxRelayFlows: 32;
-            relayPeerDownMs: 3000;
-            maxHops: 2;
-            switchOverlapMinMs: 50;
-            ackDelayMs: 100;
-            ackEvery: 32;
-            retransmitTimeoutMs: 3000;
-            creditWindowBytes: 1048576;
-            reliableBufferBytes: 16777216;
-            relayQueueBytes: 2097152;
-            hopHighWaterBytes: 1048576;
-            hopLowWaterBytes: 262144;
-            maxFragmentBytes: 65536;
-            audioReserveBps: 64000;
-            bweHeadroom: 0.9;
-            bweReportIntervalMs: 500;
-            bweDropReport: 0.2;
-            bweResolutionSteps: number[][];
-            bweFallbackBps: 1500000;
-            logCapacity: 1024;
-            logLevel: "info";
-            logConsole: false;
-            logRedact: false;
-            shareLogWithPeers: false;
-            relay: true;
-            mediaRelay: "allow";
-            allowRelay: any;
-            turnMode: "fallback";
-            stableTracks: false;
-            maxPeers: 16;
-            testHooks: any;
-        }>;
-        clock: import("./util/clock.js").Clock;
-        log: Log;
-        RTCPeerConnection: {
-            new (configuration?: RTCConfiguration): RTCPeerConnection;
-            prototype: RTCPeerConnection;
-            generateCertificate(keygenAlgorithm: AlgorithmIdentifier): Promise<RTCCertificate>;
-        };
-        sendSignal: (to: any, msg: any) => Promise<void>;
-        rtcConfig: (link: any, withTurn: any) => {
-            iceServers: RTCIceServer[];
-            bundlePolicy: string;
-        };
-        canAddTurn: (link: any) => boolean;
-    };
     /** Resolves when keys and capabilities are ready. */
     get ready(): Promise<void>;
     /** Local codec capabilities, once collected. */
@@ -211,10 +143,10 @@ export class ReatPeerGroup extends Emitter {
     removePeer(peerId: string, reason?: string): void;
     /**
      * The index this side uses for `peerId` on `link`, allocating and announcing a new one.
-     * @param {DirectLink} link
+     * @param {import("./link/direct-peer-connection.js").ReatDirectPeerConnection} link
      * @param {string} peerId
      */
-    localIndex(link: DirectLink, peerId: string): any;
+    localIndex(link: import("./link/direct-peer-connection.js").ReatDirectPeerConnection, peerId: string): any;
     /** Peer id for an index in the neighbor's table, or undefined. */
     remoteIndex(link: any, idx: any): any;
     /** @internal link id whose received tracks of `origin` the stable stream should use */
@@ -286,7 +218,6 @@ export class ReatPeerGroup extends Emitter {
 }
 import { Emitter } from "./util/emitter.js";
 import { ReatPeerConnection } from "./peer-connection.js";
-import { DirectLink } from "./link/direct-link.js";
 import { Log } from "./diag/log.js";
 import { SignalingRouter } from "./signaling/router.js";
 import { MediaManager } from "./media/media.js";

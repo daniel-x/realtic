@@ -4,8 +4,14 @@ import { Session } from "./channel/session.js";
 import { encode, split, aad, FLAG, TYPE, Reassembler, headerLength } from "./transport/framing.js";
 import { encrypt, decrypt, OVERHEAD } from "./crypto/e2e.js";
 import { LivenessMonitor } from "./liveness/monitor.js";
+import { SerialQueue } from "./signaling/queue.js";
+import { RecoverySchedule } from "./link/ice-restart.js";
+import { directPeerConnectionClass } from "./link/direct-peer-connection.js";
+import { readStats, pairDump, summarizeDump } from "./diag/pair-dump.js";
+import { failureHint } from "./diag/hints.js";
 
 const LOG_PART_BYTES = 16384;
+const RESTART_REQUEST_GAP_MS = 2000;
 
 /**
  * The connection to one other peer of the group, kept up as long as the peer is known (plan
@@ -31,12 +37,25 @@ export class ReatPeerConnection extends Emitter {
   #logRequests = new Map();
   #logParts = new Map();
   #beatTimer = null;
+  #ll;
+  /** @type {any} */
+  #direct = null;
+  #directHooks = null;
+  #directState = "connecting";
+  #directReason = "";
+  #directClosed = false;
+  #queue = null;
+  #recovery = null;
+  #localRetired = new Set();
+  #remoteRetired = new Set();
+  #lastRestartAt = -Infinity;
+  #lastRebuildAt = -Infinity;
+  #turnAdded = false;
+  #lastDump = null;
 
-  /**
-   * The direct link to this peer, owned by this connection; null until hello completed.
-   * @type {import("./link/direct-link.js").DirectLink | null}
-   */
-  direct = null;
+  /** Last error text and hint of the direct connection. */
+  directError = null;
+  directHint = null;
   /** Remote hello (protocol, keys, capabilities), once received. */
   remote = null;
   /** End to end AES-GCM key for relayed data. */
@@ -55,6 +74,7 @@ export class ReatPeerConnection extends Emitter {
     this.id = id;
     this.impolite = isImpolite(group.selfId, id);
     this.l = group.log.scope("routing", { peer: id });
+    this.#ll = group.log.scope("link", { peer: id });
     this.#reassembler = new Reassembler(group.clock);
     this.session = new Session({
       impolite: this.impolite,
@@ -83,10 +103,10 @@ export class ReatPeerConnection extends Emitter {
     const r = this.#route;
     if (!r) return null;
     if (r.kind === "direct") {
-      const link = this.direct;
-      return { kind: "direct", via: null, candidateType: link?.viaTurn ? "relay" : link?.metrics.candidateType ?? "host" };
+      const d = this.#direct;
+      return { kind: "direct", via: null, candidateType: d?.reatViaTurn ? "relay" : d?.reatMetrics.candidateType ?? "host" };
     }
-    return { kind: "relay", via: r.via, candidateType: this.#group.directConns.get(r.via)?.metrics.candidateType ?? "host" };
+    return { kind: "relay", via: r.via, candidateType: this.#group.directConns.get(r.via)?.reatMetrics.candidateType ?? "host" };
   }
 
   /** Internal route descriptor. */
@@ -94,9 +114,17 @@ export class ReatPeerConnection extends Emitter {
     return this.#route;
   }
 
-  /** The current RTCPeerConnection of the direct link, or null without one; for advanced use. */
+  /**
+   * The current ReatDirectPeerConnection to this peer (an RTCPeerConnection), or null without one.
+   * A rebuild replaces it.
+   */
+  get direct() {
+    return this.#direct;
+  }
+
+  /** The current RTCPeerConnection to this peer, or null without one; for advanced use. */
   get rtcPeerConnection() {
-    return this.direct?.pc ?? null;
+    return this.#direct;
   }
 
   /** End to end liveness monitor of relayed routes. */
@@ -250,31 +278,31 @@ export class ReatPeerConnection extends Emitter {
   }
 
   #sendOn(route, e, key) {
-    const link = route.kind === "direct" ? this.direct : this.#group.directConns.get(route.via);
-    if (!link || !link.usable) return false;
+    const link = route.kind === "direct" ? this.#direct : this.#group.directConns.get(route.via);
+    if (!link || !link.reatUsable) return false;
     const encrypted = route.kind === "relay";
     if (encrypted && !this.pairKey) return false;
     const flow = `${this.id}:${e.channelId}`;
     const dstIdx = route.kind === "direct" ? 1 : this.#group.localIndex(link, this.id);
     const flags = encrypted ? FLAG.ENCRYPTED : 0;
     const lifetimeFlag = e.lifetime !== undefined ? FLAG.LIFETIME : 0;
-    const mtu = Math.min(link.maxMessageSize, this.#group.config.maxFragmentBytes, this.#group.routing.pathMessageSize(route));
+    const mtu = Math.min(link.reatMaxMessageSize, this.#group.config.maxFragmentBytes, this.#group.routing.pathMessageSize(route));
     const room = mtu - headerLength(FLAG.FRAGMENTED | lifetimeFlag) - (encrypted ? OVERHEAD : 0);
     const parts = split(e.payload, Math.max(256, room));
     const total = e.payload.length + parts.length * 64;
-    if (link.queuedBytes(key, flow) + total > this.#group.config.relayQueueBytes) return false;
+    if (link.reatQueuedBytes(key, flow) + total > this.#group.config.relayQueueBytes) return false;
     const base = { version: this.#group.protocol.major, type: e.type, flags, srcIdx: 0, dstIdx, channelId: e.channelId, seq: e.seq, lifetime: e.lifetime };
     const fragmented = parts.length > 1;
     const envelopes = parts.map((payload, i) => (fragmented ? { ...base, fragIndex: i, fragCount: parts.length, payload } : { ...base, payload }));
     if (!encrypted) {
-      for (const env of envelopes) link.sendEnvelope(key, flow, encode(env));
+      for (const env of envelopes) link.reatSendEnvelope(key, flow, encode(env));
       return true;
     }
     const keyRef = this.pairKey;
     this.#encChain = this.#encChain.then(async () => {
       for (const env of envelopes) {
         const ct = await encrypt(keyRef, aad(env), env.payload);
-        link.sendEnvelope(key, flow, encode({ ...env, payload: ct }));
+        link.reatSendEnvelope(key, flow, encode({ ...env, payload: ct }));
       }
     }).catch((error) => this.l.warn("encryption failed", { error: error.message }));
     return true;
@@ -326,6 +354,347 @@ export class ReatPeerConnection extends Emitter {
     this.session.pump();
   }
 
+  // Direct connection --------------------------------------------------------------------------
+  // The only place where the RTCPeerConnection to this peer is replaced: a rebuild creates a new
+  // ReatDirectPeerConnection and retires the old one.
+
+  /** True once the direct connection was started (after hello). */
+  get directStarted() {
+    return this.#directHooks !== null;
+  }
+
+  /** `connecting` | `connected` | `slow` | `recovering` | `unreachable` | `closed` */
+  get directState() {
+    return this.#directState;
+  }
+
+  /** Reason of the last direct state change. */
+  get directReason() {
+    return this.#directReason;
+  }
+
+  /** The last candidate pair dump. */
+  get lastDump() {
+    return this.#lastDump;
+  }
+
+  /**
+   * Starts the direct connection. `hooks` are the group's handlers; each gets the current
+   * ReatDirectPeerConnection first.
+   * @param {object} hooks
+   */
+  startDirect(hooks) {
+    if (this.#directHooks || this.#directClosed) return;
+    this.#directHooks = hooks;
+    const g = this.#group;
+    const c = g.config;
+    this.#queue = new SerialQueue((error) => this.#noteDirectError("signaling", error));
+    this.#recovery = new RecoverySchedule({
+      clock: g.clock,
+      backoffMs: c.iceRestartBackoffMs,
+      rebuildAttempts: c.rebuildAttempts,
+      stepTimeoutMs: c.recoveryStepTimeoutMs,
+      reprobeMs: c.reprobeIntervalsMs,
+      healthy: () => !!this.#direct?.reatHealthy,
+      act: (step) => this.#recoveryStep(step),
+      canAddTurn: () => !this.#turnAdded && g.routing.canAddTurn(this.id),
+      onreprobe: () => this.#ll.info("background re-probe"),
+    });
+    this.#newDirect("start");
+  }
+
+  #newDirect(reason, silent = false) {
+    const g = this.#group;
+    const old = this.#direct;
+    if (old) {
+      this.#retireDirect(old, silent);
+      this.#lastRebuildAt = g.clock.now();
+    }
+    const ref = { d: null };
+    try {
+      const Direct = directPeerConnectionClass(g.RTC);
+      ref.d = new Direct(g.rtcConfig(this.#turnAdded), {
+        connection: this,
+        remoteId: this.id,
+        impolite: this.impolite,
+        config: g.config,
+        clock: g.clock,
+        log: this.#ll,
+        hooks: this.#hooksFor(ref),
+      });
+    } catch (error) {
+      this.#noteDirectError("RTCPeerConnection", error);
+      this.#direct = null;
+      g.directConns.delete(this.id);
+      this.#setDirectState("unreachable", `cannot create RTCPeerConnection: ${error.message}`);
+      return;
+    }
+    const d = ref.d;
+    this.#direct = d;
+    g.directConns.set(this.id, d);
+    this.#ll.info("new connection", { session: d.reatSession, reason, impolite: this.impolite });
+    if (old) this.#directHooks.rebuilt();
+    if (this.impolite) this.#queue.push(() => d.reatNegotiate("initial"));
+  }
+
+  #hooksFor(ref) {
+    const h = this.#directHooks;
+    return {
+      signal: (msg) => this.#group.router.send(this.id, msg),
+      enqueue: (task) => this.#queue.push(task),
+      open: () => {
+        h.open(ref.d);
+        this.#evaluateDirect("open");
+      },
+      ctlClosed: () => this.#onCtlClosed(),
+      ctl: (msg) => h.ctl(ref.d, msg),
+      envelope: (bytes, key) => h.envelope(ref.d, bytes, key),
+      drain: (key) => h.drain(ref.d, key),
+      remotetrack: () => h.remotetrack(ref.d),
+      negotiated: () => h.negotiated(ref.d),
+      metrics: (m, stats) => h.metrics(ref.d, m, stats),
+      liveness: (state, silence) => {
+        if (state === "stale") this.#startRecovery("stale: no data for " + Math.round(silence) + " ms");
+        else this.#evaluateDirect("liveness " + state);
+      },
+      remoteVerdict: (state) => {
+        if (state === "stale") this.#startRecovery("remote side reports silence");
+        else this.#evaluateDirect("remote verdict");
+      },
+      connected: () => this.#dump(ref.d, false, "connected"),
+      failed: () => this.#startRecovery("ice failed"),
+      watchdog: () => {
+        this.directError = "data channel open timeout";
+        this.#rebuild("watchdog");
+      },
+      connectTimeout: () => {
+        if (!this.#recovery.running) this.#startRecovery("connect timeout");
+      },
+    };
+  }
+
+  #retireDirect(d, silent = false) {
+    this.#localRetired.add(d.reatSession);
+    if (d.reatRemoteSession) this.#remoteRetired.add(d.reatRemoteSession);
+    d.reatRetire(silent);
+  }
+
+  /**
+   * Handles a signaling message of the direct connection (from the server or the mesh).
+   * @param {object} msg
+   */
+  handleDirectSignal(msg) {
+    if (this.#directClosed || !this.#queue) return;
+    this.#queue.push(() => this.#handleDirectSignal(msg));
+  }
+
+  async #handleDirectSignal(msg) {
+    if (this.#directClosed) return;
+    if (msg.rs && this.#localRetired.has(msg.rs)) {
+      this.#ll.debug("dropped signal for retired session", { t: msg.t, rs: msg.rs });
+      return;
+    }
+    if (msg.s && this.#remoteRetired.has(msg.s)) {
+      this.#ll.debug("dropped signal from retired session", { t: msg.t, s: msg.s });
+      return;
+    }
+    if (!this.#direct) this.#newDirect("signal");
+    let d = this.#direct;
+    if (!d) return;
+    if (msg.s && msg.s !== d.reatRemoteSession) {
+      if (d.reatRemoteSession === null || !d.remoteDescription) {
+        if (d.reatRemoteSession) this.#remoteRetired.add(d.reatRemoteSession);
+        d.reatRemoteSession = msg.s;
+      } else {
+        this.#ll.warn("remote session changed, rebuilding", { old: d.reatRemoteSession, new: msg.s });
+        this.#newDirect("remote session changed");
+        d = this.#direct;
+        if (!d) return;
+        d.reatRemoteSession = msg.s;
+      }
+    }
+    if (msg.t === "renegotiate") await this.#onRenegotiate(d, msg);
+    else if (msg.t === "offer" || msg.t === "answer" || msg.t === "cand") await d.reatHandleSignal(msg);
+    else this.#ll.debug("unknown signal", { t: msg.t });
+  }
+
+  async #onRenegotiate(d, msg) {
+    if (!this.impolite) return;
+    const now = this.#group.clock.now();
+    if (msg.rebuild) {
+      if (d.remoteDescription && now - this.#lastRebuildAt > RESTART_REQUEST_GAP_MS) this.#newDirect("rebuild requested");
+      return;
+    }
+    if (msg.iceRestart) {
+      if (now - this.#lastRestartAt < RESTART_REQUEST_GAP_MS) return;
+      this.#iceRestartNow(d, msg.reason ?? "requested");
+      return;
+    }
+    await d.reatNegotiate(msg.reason ?? "requested");
+  }
+
+  #onCtlClosed() {
+    if (this.#directClosed) return;
+    this.directError = "control channel closed";
+    if (this.#directState !== "unreachable") this.#setDirectState("recovering", "control channel closed");
+    this.#rebuild("control channel closed");
+    this.#startRecovery("control channel closed");
+  }
+
+  #evaluateDirect(reason) {
+    if (this.#directClosed) return;
+    const d = this.#direct;
+    if (d?.reatHealthy) {
+      if (this.#recovery.running || this.#directState === "unreachable" || this.#directState === "recovering") {
+        this.#recovery.noteHealthy();
+        this.#recovery.resetReprobe();
+      }
+      this.#setDirectState("connected", reason);
+    } else if (d?.reatUsable) {
+      if (this.#directState !== "recovering" && this.#directState !== "unreachable") this.#setDirectState("slow", reason);
+    }
+  }
+
+  #setDirectState(state, reason) {
+    if (state === this.#directState) return;
+    const prev = this.#directState;
+    this.#directState = state;
+    this.#directReason = reason;
+    if (state === "connected") {
+      this.directError = null;
+      this.directHint = null;
+    }
+    const level = state === "unreachable" ? "error" : state === "recovering" ? "warn" : "info";
+    this.#ll[level](`state ${prev} -> ${state}`, { reason, hint: this.directHint ?? undefined });
+    this.#directHooks.state(state, reason);
+  }
+
+  #startRecovery(reason) {
+    if (this.#directClosed) return;
+    this.directError = reason;
+    if (this.#directState !== "unreachable") this.#setDirectState("recovering", reason);
+    if (this.#direct) this.#dump(this.#direct, true, reason);
+    if (this.#recovery.running) return;
+    this.#recovery.run().then((result) => {
+      if (result === "unreachable" && !this.#directClosed) this.#setDirectState("unreachable", this.directError ?? reason);
+    });
+  }
+
+  #recoveryStep(step) {
+    if (this.#directClosed) return;
+    this.#ll.info(`recovery step ${step.kind}`, { attempt: step.attempt });
+    const d = this.#direct;
+    if (step.kind === "rebuild") {
+      this.#rebuild("recovery");
+      return;
+    }
+    if (!d) return;
+    if (step.kind === "restart") {
+      if (!this.impolite || this.#group.clock.now() - this.#lastRestartAt >= RESTART_REQUEST_GAP_MS) this.#restartIce(d, "recovery");
+    } else if (step.kind === "turn") {
+      this.#turnAdded = true;
+      this.#ll.info("adding TURN servers");
+      try {
+        d.setConfiguration(this.#group.rtcConfig(true));
+      } catch (error) {
+        this.#ll.warn("setConfiguration failed", { error: error.message });
+      }
+      this.#restartIce(d, "turn fallback");
+    }
+  }
+
+  /** The impolite side restarts ICE, the polite side asks for it. */
+  #restartIce(d, reason) {
+    if (this.impolite) this.#iceRestartNow(d, reason);
+    else d.reatSignal({ t: "renegotiate", iceRestart: true, reason });
+  }
+
+  #iceRestartNow(d, reason) {
+    if (d.reatClosed) return;
+    this.#lastRestartAt = this.#group.clock.now();
+    this.#ll.info("ICE restart", { reason });
+    if (!d.remoteDescription) {
+      this.#rebuild("restart before first answer");
+      return;
+    }
+    this.#queue.push(() => d.reatIceRestart());
+  }
+
+  #rebuild(reason) {
+    if (this.#directClosed) return;
+    if (this.#group.clock.now() - this.#lastRebuildAt < RESTART_REQUEST_GAP_MS) return;
+    if (this.impolite) this.#newDirect(reason);
+    else {
+      this.#ll.info("asking for rebuild", { reason });
+      this.#direct?.reatSignal({ t: "renegotiate", rebuild: true, reason });
+    }
+  }
+
+  /**
+   * ICE restart on a working direct connection, e.g. after a network change (decision D15). The
+   * impolite side restarts, the polite side asks for it.
+   * @param {string} reason
+   */
+  directIceRestart(reason) {
+    const d = this.#direct;
+    if (!d || this.#directClosed) return;
+    this.#restartIce(d, reason);
+  }
+
+  /** Re-checks liveness now and restarts ICE when the direct connection is slow or stale. */
+  checkDirect(reason) {
+    if (this.#direct?.reatCheckNow()) this.directIceRestart(reason);
+  }
+
+  /**
+   * Rebuilds the direct connection now. With `silent`, the old one is abandoned without closing
+   * it, so the remote side learns of the rebuild only from the new session id (test hook for
+   * doc §3.6).
+   */
+  rebuildDirect(reason = "requested", silent = false) {
+    if (this.#directClosed || !this.#directHooks) return;
+    this.#newDirect(reason, silent);
+    if (!this.impolite) this.#direct?.reatSignal({ t: "renegotiate", rebuild: true, reason });
+  }
+
+  async #dump(d, all, reason) {
+    try {
+      const stats = await readStats(d);
+      const dump = pairDump(stats, all);
+      this.#lastDump = { time: this.#group.clock.wallNow(), reason, ...dump };
+      if (all) {
+        const hint = failureHint(dump);
+        if (hint) this.directHint = hint;
+        this.#ll.warn("candidate pairs on failure", { reason, hint, ...summarizeDump(dump) });
+      } else {
+        this.#ll.info("selected candidate pair", summarizeDump(dump));
+      }
+    } catch {
+      // connection gone
+    }
+  }
+
+  #noteDirectError(area, error) {
+    this.directError = error?.message ?? String(error);
+    this.#ll.error(`${area} error`, { error: this.directError, stack: error?.stack?.split("\n").slice(0, 4).join(" | ") });
+  }
+
+  /**
+   * Closes the direct connection for good.
+   * @param {string} reason
+   */
+  closeDirect(reason) {
+    if (this.#directClosed) return;
+    this.#directClosed = true;
+    if (!this.#directHooks) return;
+    this.#setDirectState("closed", reason);
+    this.#recovery.cancel();
+    const d = this.#direct;
+    this.#direct = null;
+    if (this.#group.directConns.get(this.id) === d) this.#group.directConns.delete(this.id);
+    if (d) this.#retireDirect(d);
+  }
+
   // State ---------------------------------------------------------------------------------------
 
   /**
@@ -353,16 +722,6 @@ export class ReatPeerConnection extends Emitter {
   /** True after the peer was connected once. */
   get everConnected() {
     return this.#everConnected;
-  }
-
-  /**
-   * Closes the direct link and drops it.
-   * @param {string} reason
-   */
-  closeDirect(reason) {
-    const link = this.direct;
-    this.direct = null;
-    link?.close(reason);
   }
 
   /**

@@ -7,15 +7,15 @@
 export function buildLinkState(group, load) {
   const links = [];
   for (const [peer, link] of group.directConns) {
-    const m = link.metrics;
+    const m = link.reatMetrics;
     links.push({
       peer,
       state: m.state,
       rtt: m.rtt === undefined ? undefined : Math.round(m.rtt),
       bitrate: m.bitrate,
       loss: m.loss,
-      candidateType: link.viaTurn ? "relay" : m.candidateType,
-      mms: link.maxMessageSize,
+      candidateType: link.reatViaTurn ? "relay" : m.candidateType,
+      mms: link.reatMaxMessageSize,
     });
   }
   return { t: "link-state", links, load, relay: !!group.config.relay, mediaRelay: group.config.mediaRelay, ts: Math.round(group.clock.now()) };
