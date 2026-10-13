@@ -117,9 +117,9 @@ export class Routing {
     this.#updateAll(`link ${peerId} ${state}: ${reason}`);
   }
 
-  onMetrics(link) {
+  onMetrics(link, m, stats) {
     this.#computeLoad();
-    this.mediaRelay.onMetrics(link);
+    this.mediaRelay.onMetrics(link, m, stats);
   }
 
   tick() {

@@ -11,6 +11,8 @@ import { TestStunServer } from "../harness/stun.js";
 after(() => closeBrowsers());
 
 const two = (pairing) => PAIRINGS[pairing].slice(0, 2);
+// Video budget at the loss-based estimator's floor (50 kbps) with the default headroom.
+const BWE_FLOOR_BUDGET = 50000 * 0.9;
 // Loopback, private and shared (CGNAT, 100.64.0.0/10) IPv4 addresses, the ones a test host has.
 const NON_PUBLIC_IPV4 = /\b(127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+)\b/;
 const near = (actual, expected, tolerance, what) =>
@@ -364,8 +366,11 @@ for (const pairing of pairings()) {
         s.rule(s.id(0), s.id(1), { bandwidth: 250000 });
         let capped = Infinity;
         await waitFor(async () => (capped = await s.eval(0, (id) => window.t.outboundBitrate(id, 2000), s.id(1))) < 250000 * 1.3, 25000, "sender follows the cap").catch(() => {});
-        console.log(`    DIR-14 ${pairing}: free ${Math.round(free / 1000)} kbps, capped ${Math.round(capped / 1000)} kbps`, JSON.stringify(await s.eval(0, () => window.t.stats().budgets)));
+        const budgets = await s.eval(0, () => window.t.stats().budgets);
+        console.log(`    DIR-14 ${pairing}: free ${Math.round(free / 1000)} kbps, capped ${Math.round(capped / 1000)} kbps`, JSON.stringify(budgets));
         assert.ok(capped < 250000 * 1.3, `sender follows the cap: ${capped}`);
+        const budget = Object.values(budgets.links[s.id(1)] ?? {})[0];
+        assert.ok(budget > BWE_FLOOR_BUDGET * 1.2 && budget < 250000 * 2, `budget near the cap, not at the estimator's floor or ceiling: ${budget}`);
         assert.equal(await s.eval(1, (id) => window.t.state(id), s.id(0)), "connected");
       });
     });
