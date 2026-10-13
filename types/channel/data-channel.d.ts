@@ -13,7 +13,7 @@ export function decodeMessage(payload: Uint8Array): string | ArrayBuffer;
  * changes, ICE restarts and link rebuilds. Created by `peer.createChannel()` or delivered by the
  * peer's `channel` event.
  */
-export class RalChannel extends EventTarget {
+export class RalDataChannel extends EventTarget {
     /**
      * @param {object} session internal end to end session
      * @param {number} id

@@ -5,7 +5,7 @@
  * routes happen inside; the object survives link rebuilds, ICE restarts and route switches, so app
  * state bound to it never has to be rebuilt (doc §3.8).
  *
- * Events: `statechange` (state, reason), `routechange` (route), `channel` (RalChannel),
+ * Events: `statechange` (state, reason), `routechange` (route), `channel` (RalDataChannel),
  * `track` ({track, stream, tag, origin, kind}), `trackreplaced` ({track, oldTrack, stream, tag}),
  * `trackended` ({track, stream, tag}).
  */
@@ -58,7 +58,7 @@ export class RalPeerConnection extends Emitter {
         maxRetransmits?: number;
         maxPacketLifeTime?: number;
         protocol?: string;
-    }): import("./index.js").RalChannel;
+    }): import("./index.js").RalDataChannel;
     /**
      * Fetches the remote side's diagnostic report. Rejects when the remote app did not enable
      * `shareLogWithPeers`.

@@ -51,7 +51,7 @@ happen inside it.
 | `requestLog()` | promise of the remote side's diagnostic report (needs its `shareLogWithPeers`) |
 | `directConn` | the current `RalDirectPeerConnection` to this peer (an `RTCPeerConnection` subclass), null without a direct one; a rebuild replaces it; for advanced use |
 
-Events: `statechange` (state, reason), `routechange` (route), `channel` (RalChannel),
+Events: `statechange` (state, reason), `routechange` (route), `channel` (RalDataChannel),
 `track` ({ track, stream, tag, kind, origin, pub }), `trackreplaced` ({ track, oldTrack, stream,
 tag }), `trackended` ({ track, stream, tag }).
 
@@ -61,7 +61,7 @@ route changes, ICE restarts and rebuilds; the library swaps the track inside it.
 The `RalPeerConnection` object stays the same for the life of the remote page, so UI bound to it
 never has to be rebuilt.
 
-## RalChannel
+## RalDataChannel
 
 `RTCDataChannel`-like: `send(data)` (string, ArrayBuffer, ArrayBufferView), `close()`,
 `readyState`, `bufferedAmount`, `bufferedAmountLowThreshold`, `label`, `protocol`, `id`,
