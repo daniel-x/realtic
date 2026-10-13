@@ -2,12 +2,13 @@
 // http://localhost:8080/examples/call/?group=test in several tabs or devices (add &server=node
 // for the Node server).
 import { RalPeerGroup, HINT_TEXT, attachMedia } from "../../src/index.js";
-import { demoSignaling } from "../signaling.js";
+import { demoSignaling, demoLogForwarding } from "../signaling.js";
 
 const params = new URLSearchParams(location.search);
 const groupName = params.get("group") ?? "demo";
 const selfId = crypto.randomUUID().slice(0, 8);
 const group = new RalPeerGroup({ selfId, signaling: demoSignaling(groupName), autoPeers: true, iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+demoLogForwarding(group, groupName);
 document.getElementById("me").textContent = `you: ${selfId}, group: ${groupName}`;
 
 const tiles = document.getElementById("tiles");

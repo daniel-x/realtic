@@ -95,12 +95,26 @@ event is a generated track that never changes; frames of the current source are 
 | Member | Description |
 | ------ | ----------- |
 | `entries({ since, level })` | copies of the buffered entries, oldest first |
-| `text()` | readable lines, UTC timestamps `yyyy-MM-dd_HH-mm-ss.SSS` |
+| `text()` | readable lines, UTC timestamps `yyyy-MM-dd_HH-mm-ss.SSSSSS` (microseconds) |
 | `on("entry", fn)` | live entries at or above `config.logLevel` |
 | `clear()` | empties the buffer |
 
-Entry: `{ seq, time, level, area, peer, session, msg, data }`. Gaps in `seq` show overwritten
-entries.
+Entry: `{ seq, time, level, area, peer, session, msg, data }`. `time` is UTC milliseconds with a
+microsecond fraction. Gaps in `seq` show overwritten entries.
+
+## forwardLog
+
+```js
+import { forwardLog } from "realtic/log-forward";
+const stop = forwardLog(group, { url: "https://example.com/realtic/log.php", group: "demo" });
+```
+
+Sends the log entries of `group` to a log endpoint of a reference server, which appends the
+entries of all peers of a group to one file (see `docs/deployment.md`, Forwarded Logs). It starts
+with the buffered entries, sends new ones every `intervalMs` (1000), and the rest with
+`sendBeacon` on `pagehide`. Options: `url`, `group` (file name, default `"default"`), `level`
+(`"debug"`), `intervalMs`. `stop()` returns a promise and sends what is left. The app decides
+when to forward, e.g. behind a URL parameter; the demos use `?log_to_server=1`.
 
 ## Signaling Adapters
 

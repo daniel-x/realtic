@@ -22,13 +22,14 @@ export function redactText(text, table) {
   return text.replace(IPV4, sub).replace(IPV6, sub6);
 }
 
-/** Formats UTC milliseconds as `yyyy-MM-dd_HH-mm-ss.SSS` (doc §5). */
+/** Formats UTC milliseconds as `yyyy-MM-dd_HH-mm-ss.SSSSSS`, with microseconds (doc §5). */
 export function formatTime(ms) {
-  const d = new Date(ms);
+  const us = Math.round(ms * 1000);
+  const d = new Date(Math.floor(us / 1000));
   const p = (n, w = 2) => String(n).padStart(w, "0");
   return (
     `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}_` +
-    `${p(d.getUTCHours())}-${p(d.getUTCMinutes())}-${p(d.getUTCSeconds())}.${p(d.getUTCMilliseconds(), 3)}`
+    `${p(d.getUTCHours())}-${p(d.getUTCMinutes())}-${p(d.getUTCSeconds())}.${p(us % 1000000, 6)}`
   );
 }
 
@@ -43,6 +44,13 @@ function capData(data) {
   if (json === undefined) return undefined;
   if (json.length <= MAX_DATA_CHARS) return JSON.parse(json);
   return { truncated: true, size: json.length, head: json.slice(0, MAX_DATA_CHARS) };
+}
+
+/** One entry as text without its time: level, area, ids, message and data. */
+export function entryText(e) {
+  const ids = [e.peer && `peer=${e.peer}`, e.session && `s=${e.session}`].filter(Boolean).join(" ");
+  const data = e.data === undefined ? "" : ` ${JSON.stringify(e.data)}`;
+  return `${e.level.toUpperCase().padEnd(5)} [${e.area}]${ids ? " " + ids : ""} ${e.msg}${data}`;
 }
 
 /**
@@ -160,9 +168,7 @@ export class RalLog extends Emitter {
 
   /** Formats one entry as a line. */
   static line(e) {
-    const ids = [e.peer && `peer=${e.peer}`, e.session && `s=${e.session}`].filter(Boolean).join(" ");
-    const data = e.data === undefined ? "" : ` ${JSON.stringify(e.data)}`;
-    return `${formatTime(e.time)} ${e.level.toUpperCase().padEnd(5)} [${e.area}]${ids ? " " + ids : ""} ${e.msg}${data}`;
+    return `${formatTime(e.time)} ${entryText(e)}`;
   }
 }
 

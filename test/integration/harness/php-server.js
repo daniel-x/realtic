@@ -33,9 +33,9 @@ function canConnect(port) {
  * Same interface as createSignalingServer of server/node: `port`, `signaling`, `controls`
  * (down, delayMs, duplicate, redeliver; assignments take effect on the next request),
  * `setDown(down)`, `close()`.
- * @param {{workers?: number}} [options]
+ * @param {{workers?: number, clientLogDir?: string}} [options]
  */
-export async function createPhpServer({ workers = 8 } = {}) {
+export async function createPhpServer({ workers = 8, clientLogDir } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "realtic-php-"));
   const controlsFile = join(dir, "controls.json");
   const state = { down: false, delayMs: 0, duplicate: false, redeliver: false };
@@ -51,7 +51,7 @@ export async function createPhpServer({ workers = 8 } = {}) {
   const port = await freePort();
   const child = spawn(process.env.REALTIC_PHP ?? "php", ["-S", `127.0.0.1:${port}`, "server/php/router.php"], {
     cwd: ROOT,
-    env: { ...process.env, REALTIC_DB: join(dir, "realtic.sqlite"), REALTIC_TEST_CONTROLS: controlsFile, PHP_CLI_SERVER_WORKERS: String(workers) },
+    env: { ...process.env, REALTIC_DB: join(dir, "realtic.sqlite"), REALTIC_TEST_CONTROLS: controlsFile, PHP_CLI_SERVER_WORKERS: String(workers), REALTIC_CLIENT_LOG_DIR: clientLogDir ?? "" },
     stdio: ["ignore", "ignore", "pipe"],
   });
   let stderr = "";
@@ -65,6 +65,7 @@ export async function createPhpServer({ workers = 8 } = {}) {
   return {
     port,
     url,
+    logUrl: `http://localhost:${port}/server/php/log.php`,
     signaling: { type: "polling", url },
     controls,
     setDown(down) {

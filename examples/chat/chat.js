@@ -1,10 +1,11 @@
 // Data-only demo: a reliable chat channel to every peer in the group.
 import { RalPeerGroup } from "../../src/index.js";
-import { demoSignaling } from "../signaling.js";
+import { demoSignaling, demoLogForwarding } from "../signaling.js";
 
 const groupName = new URLSearchParams(location.search).get("group") ?? "chat";
 const selfId = crypto.randomUUID().slice(0, 8);
 const group = new RalPeerGroup({ selfId, signaling: demoSignaling(groupName), autoPeers: true });
+demoLogForwarding(group, groupName);
 const channels = new Map();
 const log = document.getElementById("log");
 

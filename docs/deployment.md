@@ -45,6 +45,8 @@ up most signaling runs over the peers, so a connected group costs one request pe
 | `log_file` | none | request log: one UTC line per request that carried messages or changed membership |
 | `log_polls` | false | log idle polls too |
 | `log_max_bytes`, `log_files` | 1048576, 5 | log rotation by size |
+| `client_log_dir` | none | directory of `log.php`, see [Forwarded Logs](#forwarded-logs); disabled when unset |
+| `client_log_max_bytes`, `client_log_files` | 16777216, 5 | rotation of each group file |
 
 Messages are delivered at most once: a request returns its client's pending messages and deletes
 exactly those rows in the same `BEGIN IMMEDIATE` transaction.
@@ -54,9 +56,27 @@ exactly those rows in the same `BEGIN IMMEDIATE` transaction.
 
 ### Node Server (`server/node`)
 
-`node server/node/server.js [port]` runs a WebSocket server with groups, presence and a
-`sendBeacon` endpoint (`<url>/beacon?id=&group=`, body `{ to, msg }`). It also serves the demos.
-Put it behind a TLS reverse proxy for `wss://`.
+`node server/node/server.js [port] [--log-dir <dir>]` runs a WebSocket server with groups,
+presence and a `sendBeacon` endpoint (`<url>/beacon?id=&group=`, body `{ to, msg }`). It also
+serves the demos. With `--log-dir`, it accepts forwarded logs at `/log`. Put it behind a TLS
+reverse proxy for `wss://`.
+
+### Forwarded Logs
+
+`forwardLog` (`realtic/log-forward`) sends a page's log entries to `server/php/log.php` or to
+`/log` of the Node server. The server appends the entries of all peers of a group to one file,
+`<dir>/<group>.log`, in arrival order, so both ends of a problem are in one place:
+
+```
+2026-10-13_14-02-07.481233 2026-10-13_14-02-07.480912 Ab12x #57 INFO  [link] peer=Cd34y s=9f1c state connected -> slow {"reason":"no data for 1500 ms"}
+```
+
+The first time is when the server received the entry, the second the client's time of the entry
+(both UTC, microseconds), then the client id and the entry's `seq`. Client clocks differ, so the
+receive time gives the order across peers and the client time the order within one peer.
+Browsers round their clock to 100 µs (Chromium) or 1 ms (Firefox) unless the page is
+cross-origin isolated. The files contain the addresses and ids of every peer: keep the directory
+out of reach of HTTP.
 
 ### A Server of Your Own
 

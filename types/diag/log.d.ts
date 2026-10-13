@@ -4,8 +4,10 @@
  * @param {Map<string, string>} table
  */
 export function redactText(text: string, table: Map<string, string>): string;
-/** Formats UTC milliseconds as `yyyy-MM-dd_HH-mm-ss.SSS` (doc §5). */
+/** Formats UTC milliseconds as `yyyy-MM-dd_HH-mm-ss.SSSSSS`, with microseconds (doc §5). */
 export function formatTime(ms: any): string;
+/** One entry as text without its time: level, area, ids, message and data. */
+export function entryText(e: any): string;
 /** Log levels in ascending order. */
 export const LEVELS: string[];
 /**

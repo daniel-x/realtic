@@ -3,17 +3,32 @@
  * can drive time with `RalFakeClock`.
  * @typedef {object} Clock
  * @property {() => number} now milliseconds, monotonic within a clock
- * @property {() => number} wallNow UTC milliseconds since the epoch
+ * @property {() => number} wallNow UTC milliseconds since the epoch, with a microsecond fraction
  * @property {(fn: () => void, ms: number) => any} setTimeout
  * @property {(id: any) => void} clearTimeout
  * @property {(fn: () => void, ms: number) => any} setInterval
  * @property {(id: any) => void} clearInterval
  */
 
+const WALL_RESYNC_MS = 1;
+let wallOffset = globalThis.performance ? Date.now() - performance.now() : 0;
+
+/**
+ * UTC time with the resolution of `performance.now()`. It follows `Date.now()` within
+ * `WALL_RESYNC_MS`, so a clock adjustment or a paused monotonic clock does not make it drift.
+ */
+function wallNow() {
+  if (!globalThis.performance) return Date.now();
+  const mono = performance.now();
+  const wall = Date.now();
+  if (Math.abs(wallOffset + mono - wall) > WALL_RESYNC_MS) wallOffset = wall - mono;
+  return wallOffset + mono;
+}
+
 /** @type {Clock} */
 export const realClock = {
   now: () => (globalThis.performance ? performance.now() : Date.now()),
-  wallNow: () => Date.now(),
+  wallNow,
   setTimeout: (fn, ms) => globalThis.setTimeout(fn, ms),
   clearTimeout: (id) => globalThis.clearTimeout(id),
   setInterval: (fn, ms) => globalThis.setInterval(fn, ms),

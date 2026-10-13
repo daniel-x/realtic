@@ -9,6 +9,10 @@
     ".": {
       "types": "./types/index.d.ts",
       "default": "./src/index.js"
+    },
+    "./log-forward": {
+      "types": "./types/diag/log-forward.d.ts",
+      "default": "./src/diag/log-forward.js"
     }
   },
   "files": [

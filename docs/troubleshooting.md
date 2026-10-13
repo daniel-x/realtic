@@ -10,11 +10,11 @@ connection has two ends; read both logs before concluding anything.
 copyButton.onclick = () => navigator.clipboard.writeText(group.log.text());
 const report = await group.diagnosticReport();          // JSON, send it wherever you want
 const remote = await peer.requestLog();                 // the other end, if it set shareLogWithPeers
-group.log.on("entry", (e) => forwardToServer(e));       // live, e.g. behind ?log_to_server=1
+forwardLog(group, { url: logUrl, group: "demo" });     // all peers into one server file
 ```
 
-Timestamps are UTC, `yyyy-MM-dd_HH-mm-ss.SSS`, the same format on every device, so two logs can be
-read side by side. `config.logRedact` replaces IP addresses with placeholders.
+Timestamps are UTC, `yyyy-MM-dd_HH-mm-ss.SSSSSS` (microseconds), the same format on every device,
+so two logs can be read side by side. `config.logRedact` replaces IP addresses with placeholders.
 
 ## Connection States
 
