@@ -8,8 +8,8 @@ const MAX_BODY_CHARS = 60000;
  * with the entries already buffered, then sends the new ones every `intervalMs` and when the page
  * becomes hidden, and the rest with `sendBeacon` on `pagehide`, as far as the browser's beacon
  * quota allows (Chromium: 64 KiB). A keepalive request still in flight at `pagehide` counts as
- * sent. Entries a failed request carried are sent again with the next one. Entry times are UTC
- * milliseconds with a microsecond fraction.
+ * sent. Entries a failed request carried are sent again with the next one. On the wire, an
+ * entry carries `timeUs`, its time as integer UTC microseconds, instead of `time`.
  * @param {import("../peer-group.js").RalPeerGroup} peerGroup
  * @param {object} options
  * @param {string} options.url the log endpoint
@@ -32,8 +32,8 @@ export function forwardLog(peerGroup, { url, group = "default", level = "debug",
     const all = log.entries({ since, level });
     const parts = [];
     let chars = 0;
-    for (const e of all) {
-      const json = JSON.stringify(e);
+    for (const { time, ...e } of all) {
+      const json = JSON.stringify({ ...e, timeUs: Math.round(time * 1000) });
       if (parts.length && chars + json.length > MAX_BODY_CHARS) break;
       parts.push(json);
       chars += json.length + 1;

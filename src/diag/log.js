@@ -24,7 +24,11 @@ export function redactText(text, table) {
 
 /** Formats UTC milliseconds as `yyyy-MM-dd_HH-mm-ss.SSSSSS`, with microseconds (doc §5). */
 export function formatTime(ms) {
-  const us = Math.round(ms * 1000);
+  return formatTimeUs(Math.round(ms * 1000));
+}
+
+/** Formats integer UTC microseconds as `yyyy-MM-dd_HH-mm-ss.SSSSSS`. */
+export function formatTimeUs(us) {
   const d = new Date(Math.floor(us / 1000));
   const p = (n, w = 2) => String(n).padStart(w, "0");
   return (
