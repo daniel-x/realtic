@@ -74,7 +74,7 @@ t.peerInfo = (id) => {
   return p ? { state: p.state, reason: p.reason, route: p.route, lastError: p.lastError, hint: p.hint } : null;
 };
 t.linkInfo = (id) => {
-  const l = t.group.direct(id);
+  const l = t.group.directConns.get(id);
   return l ? { state: l.state, liveness: l.liveness, session: l.session, metrics: l.metrics, lastError: l.lastError, hint: l.hint } : null;
 };
 
@@ -179,7 +179,7 @@ t.publishCamera = async (tag = "camera", size = { width: 320, height: 240 }) => 
 };
 /** Outbound video bitrate in bps toward peerId over `ms`. */
 t.outboundBitrate = async (peerId, ms = 2000) => {
-  const pc = t.group.direct(peerId)?.pc;
+  const pc = t.group.directConns.get(peerId)?.pc;
   const bytes = async () => {
     let n = 0;
     (await pc.getStats()).forEach((s) => {
@@ -193,7 +193,7 @@ t.outboundBitrate = async (peerId, ms = 2000) => {
 };
 /** Inbound media bytes from peerId. */
 t.inboundBytes = async (peerId, kind) => {
-  const pc = t.group.direct(peerId)?.pc;
+  const pc = t.group.directConns.get(peerId)?.pc;
   let n = 0;
   (await pc.getStats()).forEach((s) => {
     if (s.type === "inbound-rtp" && (!kind || s.kind === kind)) n += s.bytesReceived;
@@ -202,7 +202,7 @@ t.inboundBytes = async (peerId, kind) => {
 };
 /** maxBitrate of the video senders toward peerId. */
 t.senderParams = (peerId) => {
-  const pc = t.group.direct(peerId)?.pc;
+  const pc = t.group.directConns.get(peerId)?.pc;
   return pc.getSenders().filter((s) => s.track?.kind === "video").map((s) => s.getParameters().encodings?.map((e) => ({ active: e.active, maxBitrate: e.maxBitrate, scale: e.scaleResolutionDownBy })));
 };
 t.replaceCounter = async (tag) => {
@@ -277,18 +277,18 @@ t.setSubscription = (origin, sub) => t.group.setSubscription(origin, sub);
 t.leave = () => t.group.leave();
 t.close = () => t.group.close();
 t.hook = {
-  rebuild: (peerId) => t.group.direct(peerId)?.rebuild("test hook", true),
-  abortTransport: (peerId) => t.group.direct(peerId)?.abortTransport(),
+  rebuild: (peerId) => t.group.directConns.get(peerId)?.rebuild("test hook", true),
+  abortTransport: (peerId) => t.group.directConns.get(peerId)?.abortTransport(),
   busy: (ms) => {
     const end = performance.now() + ms;
     while (performance.now() < end);
   },
   captureForwarded: () => (t.forwarded = []),
-  transports: (peerId) => t.group.direct(peerId)?.transports ?? [],
-  sendCtl: (peerId, msg) => t.group.direct(peerId)?.sendCtl(msg),
+  transports: (peerId) => t.group.directConns.get(peerId)?.transports ?? [],
+  sendCtl: (peerId, msg) => t.group.directConns.get(peerId)?.sendCtl(msg),
   rawEnvelope: async (via, target) => {
     const { encode } = await import("../../../src/transport/framing.js");
-    const link = t.group.direct(via);
+    const link = t.group.directConns.get(via);
     const dstIdx = t.group.localIndex(link, target);
     link.sendEnvelope("rel", "raw", encode({ version: 1, type: 0, flags: 1, srcIdx: 0, dstIdx, channelId: 9, seq: 1, payload: new Uint8Array(40) }));
   },

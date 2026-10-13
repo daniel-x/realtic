@@ -86,7 +86,7 @@ export class ReatPeerConnection extends Emitter {
       const link = this.direct;
       return { kind: "direct", via: null, candidateType: link?.viaTurn ? "relay" : link?.metrics.candidateType ?? "host" };
     }
-    return { kind: "relay", via: r.via, candidateType: this.#group.direct(r.via)?.metrics.candidateType ?? "host" };
+    return { kind: "relay", via: r.via, candidateType: this.#group.directConns.get(r.via)?.metrics.candidateType ?? "host" };
   }
 
   /** Internal route descriptor. */
@@ -250,7 +250,7 @@ export class ReatPeerConnection extends Emitter {
   }
 
   #sendOn(route, e, key) {
-    const link = route.kind === "direct" ? this.direct : this.#group.direct(route.via);
+    const link = route.kind === "direct" ? this.direct : this.#group.directConns.get(route.via);
     if (!link || !link.usable) return false;
     const encrypted = route.kind === "relay";
     if (encrypted && !this.pairKey) return false;

@@ -31,6 +31,12 @@ export class ReatPeerGroup extends Emitter {
      * @type {Map<string, ReatPeerConnection>}
      */
     connections: Map<string, ReatPeerConnection>;
+    /**
+     * The direct links of the connections that have one, i.e. every existing RTCPeerConnection.
+     * Each link is owned by its connection (`connection.direct`).
+     * @type {Map<string, DirectLink>}
+     */
+    directConns: Map<string, DirectLink>;
     selfId: string;
     config: Readonly<{
         HEARTBEAT_IDLE_MS: 500;
@@ -194,14 +200,6 @@ export class ReatPeerGroup extends Emitter {
     /** True when TURN servers are configured. */
     get hasTurn(): boolean;
     /**
-     * The direct link of the connection to `peerId`, or undefined while there is none.
-     * @param {string} peerId
-     * @returns {DirectLink | undefined}
-     */
-    direct(peerId: string): DirectLink | undefined;
-    /** The direct links of all connections that have one. */
-    directLinks(): Generator<DirectLink, void, unknown>;
-    /**
      * Adds a peer to the group and starts connecting to it. Returns the stable ReatPeerConnection.
      * @param {string} peerId
      */
@@ -288,9 +286,9 @@ export class ReatPeerGroup extends Emitter {
 }
 import { Emitter } from "./util/emitter.js";
 import { ReatPeerConnection } from "./peer-connection.js";
+import { DirectLink } from "./link/direct-link.js";
 import { Log } from "./diag/log.js";
 import { SignalingRouter } from "./signaling/router.js";
 import { MediaManager } from "./media/media.js";
 import { Routing } from "./routing/route.js";
 import { NetworkWatcher } from "./link/network.js";
-import { DirectLink } from "./link/direct-link.js";

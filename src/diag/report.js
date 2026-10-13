@@ -28,8 +28,7 @@ function iceServersWithoutCredentials(servers) {
  */
 export async function diagnosticReport(group) {
   const stats = {};
-  for (const link of group.directLinks()) {
-    const id = link.remoteId;
+  for (const [id, link] of group.directConns) {
     if (!link.pc) continue;
     try {
       const s = await readStats(link.pc);
@@ -46,7 +45,7 @@ export async function diagnosticReport(group) {
     config: plainConfig(group.config),
     iceServers: iceServersWithoutCredentials(group.iceServers),
     peers: [...group.connections.values()].map((p) => ({ id: p.id, state: p.state, reason: p.reason, route: p.route, lastError: p.lastError, hint: p.hint })),
-    links: [...group.directLinks()].map((l) => ({ peer: l.remoteId, state: l.state, reason: l.reason, session: l.session, liveness: l.liveness, metrics: l.metrics, lastError: l.lastError, hint: l.hint, lastDump: l.lastDump })),
+    links: [...group.directConns.values()].map((l) => ({ peer: l.remoteId, state: l.state, reason: l.reason, session: l.session, liveness: l.liveness, metrics: l.metrics, lastError: l.lastError, hint: l.hint, lastDump: l.lastDump })),
     routing: group.getStats(),
     media: group.media.streams.list(),
     stats,

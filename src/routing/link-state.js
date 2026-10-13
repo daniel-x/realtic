@@ -6,8 +6,7 @@
 /** Builds this peer's `link-state` message. */
 export function buildLinkState(group, load) {
   const links = [];
-  for (const link of group.directLinks()) {
-    const peer = link.remoteId;
+  for (const [peer, link] of group.directConns) {
     const m = link.metrics;
     links.push({
       peer,
