@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { candidates, RouteSelector, chooseStandby, CLASS, routeKey, relayLoad, codecPathOk } from "../../src/routing/planner.js";
 import { linkBudgets, relayBudget, scaleFor, BudgetReporter } from "../../src/media/bwe.js";
-import { FakeClock } from "../../src/util/clock.js";
+import { RalFakeClock } from "../../src/util/clock.js";
 
 const ok = (rtt, extra = {}) => ({ state: "ok", rtt, candidateType: "host", ...extra });
 const neighbor = (link, table, extra = {}) => ({ link, table: new Map(Object.entries(table)), load: 0, relay: true, mediaRelay: "allow", major: 1, ...extra });
@@ -49,7 +49,7 @@ test("codec capability check", () => {
 });
 
 test("hysteresis: switch only after threshold holds", () => {
-  const clock = new FakeClock();
+  const clock = new RalFakeClock();
   const sel = new RouteSelector(clock, { switchThreshold: 0.25, switchHoldMs: 3000 });
   const r = (via, cost) => ({ kind: "relay", via, cls: 1, cost });
   assert.equal(sel.decide([r("C", 100)]).route.via, "C");
@@ -80,7 +80,7 @@ test("budgets: audio reserve, video by weight; relay reports the minimum", () =>
 });
 
 test("budget reporter throttles but reports drops at once", () => {
-  const clock = new FakeClock();
+  const clock = new RalFakeClock();
   const r = new BudgetReporter(clock, 500, 0.2);
   assert.ok(r.due(new Map([["v", 1000]])));
   assert.ok(!r.due(new Map([["v", 950]])));

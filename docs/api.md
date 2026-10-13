@@ -21,7 +21,7 @@ const group = new RalPeerGroup({
 | `addPeer(id)` | adds a peer and starts connecting; returns the stable `RalPeerConnection` |
 | `removePeer(id)` | sends `bye`, closes the connection |
 | `connections` | `Map<id, RalPeerConnection>`, one per known peer, also when it could not be opened |
-| `publish(track, { tag, to })` | publishes a local track to `"all"` or a list of peer ids; returns a `Publication` |
+| `publish(track, { tag, to })` | publishes a local track to `"all"` or a list of peer ids; returns a `RalPublication` |
 | `setSubscription(origin, { audio, video, tags })` | which media of `origin` this side wants; unwanted flows stop at their source |
 | `leave()` | sends `bye` over the mesh and the signaling server (beacon when supported) and closes; called on `pagehide` automatically |
 | `close()` | closes everything without `bye` |
@@ -86,11 +86,11 @@ render a track added to a playing `srcObject`. Returns a function that detaches 
 With `config.stableTracks` (Chromium, `MediaStreamTrackGenerator`), the `track` of the `track`
 event is a generated track that never changes; frames of the current source are copied into it.
 
-## Publication
+## RalPublication
 
 `id`, `track`, `kind`, `tag`, `replaceTrack(track)` (no renegotiation), `close()`.
 
-## Log
+## RalLog
 
 | Member | Description |
 | ------ | ----------- |
@@ -108,11 +108,11 @@ entries.
 adapter with `createSignaling(settings, selfId)`. `type` defaults to `"websocket"` for `ws:` and
 `wss:` URLs and to `"polling"` otherwise.
 
-- `PollingSignaling(url, selfId, { group, fastMs, idleMs, activeMs, timeoutMs })` for
+- `RalPollingSignaling(url, selfId, { group, fastMs, idleMs, activeMs, timeoutMs })` for
   `server/php/signal.php`. Polls every `fastMs` while signaling is active (for `activeMs`, 5000,
   after a message) and every `idleMs` otherwise; without options it uses the server's values.
-- `WebSocketSignaling(url, selfId, { group })` for `server/node/server.js`.
-- `MemoryHub` for tests: `hub.join(id)` returns an adapter.
+- `RalWebSocketSignaling(url, selfId, { group })` for `server/node/server.js`.
+- `RalMemoryHub` for tests: `hub.join(id)` returns an adapter.
 
 An adapter of your own implements `send(to, msg)`, `onmessage(from, msg)`, optionally
 `onpresence({ type: "join" | "leave", peer })`, `connected`, `sendBeacon(to, msg)`, and `close()`.

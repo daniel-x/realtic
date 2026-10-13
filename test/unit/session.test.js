@@ -2,13 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Session } from "../../src/channel/session.js";
 import { makeConfig } from "../../src/config.js";
-import { FakeClock } from "../../src/util/clock.js";
-import { Log } from "../../src/diag/log.js";
+import { RalFakeClock } from "../../src/util/clock.js";
+import { RalLog } from "../../src/diag/log.js";
 
 function wire({ drop = () => false } = {}) {
-  const clock = new FakeClock();
+  const clock = new RalFakeClock();
   const config = makeConfig();
-  const log = new Log({ clock }).scope("channel");
+  const log = new RalLog({ clock }).scope("channel");
   const queue = [];
   let up = true;
   const mk = (impolite, name) =>

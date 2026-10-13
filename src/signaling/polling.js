@@ -9,7 +9,7 @@
  * Messages queued when a request fails are dropped, like the WebSocket adapter does while
  * disconnected: the library retries what matters.
  */
-export class PollingSignaling {
+export class RalPollingSignaling {
   #queue = [];
   #inflight = false;
   #again = false;

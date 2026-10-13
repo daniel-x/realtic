@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FakeClock } from "../../src/util/clock.js";
+import { RalFakeClock } from "../../src/util/clock.js";
 import { Emitter } from "../../src/util/emitter.js";
 
 test("fake clock runs timers in order", () => {
-  const c = new FakeClock();
+  const c = new RalFakeClock();
   const seen = [];
   c.setTimeout(() => seen.push("b"), 20);
   c.setTimeout(() => seen.push("a"), 10);

@@ -97,7 +97,7 @@ function defineClass(Base) {
      * @param {boolean} options.impolite
      * @param {Readonly<typeof import("../config.js").DEFAULTS>} options.config
      * @param {import("../util/clock.js").Clock} options.clock
-     * @param {ReturnType<import("../diag/log.js").Log["scope"]>} options.log
+     * @param {ReturnType<import("../diag/log.js").RalLog["scope"]>} options.log
      * @param {DirectHooks} options.hooks
      */
     constructor(rtcConfig, { connection, remoteId, impolite, config, clock, log, hooks }) {

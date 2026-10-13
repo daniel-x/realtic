@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { RecoverySchedule } from "../../src/link/ice-restart.js";
-import { FakeClock } from "../../src/util/clock.js";
+import { RalFakeClock } from "../../src/util/clock.js";
 
 const flush = () => new Promise((r) => setImmediate(r));
 
@@ -13,7 +13,7 @@ async function drive(clock, ms, step = 100) {
 }
 
 test("restarts with backoff, rebuild, then unreachable and re-probe", async () => {
-  const clock = new FakeClock();
+  const clock = new RalFakeClock();
   const acts = [];
   const s = new RecoverySchedule({
     clock, backoffMs: [1000, 3000, 6000], rebuildAttempts: 1, stepTimeoutMs: 2000, reprobeMs: [30000, 60000],
@@ -28,7 +28,7 @@ test("restarts with backoff, rebuild, then unreachable and re-probe", async () =
 });
 
 test("recovers when health is reported", async () => {
-  const clock = new FakeClock();
+  const clock = new RalFakeClock();
   const acts = [];
   const s = new RecoverySchedule({
     clock, backoffMs: [1000, 3000], rebuildAttempts: 1, stepTimeoutMs: 2000, reprobeMs: [30000],

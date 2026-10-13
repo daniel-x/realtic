@@ -49,7 +49,7 @@ function capData(data) {
  * Ring buffer logger (section 12.1). Records all levels; `level` filters only the `entry` event
  * and the console mirror. Never throws.
  */
-export class Log extends Emitter {
+export class RalLog extends Emitter {
   #buffer;
   #next = 0;
   #count = 0;
@@ -104,7 +104,7 @@ export class Log extends Emitter {
       this.#next = (this.#next + 1) % this.#buffer.length;
       this.#count = Math.min(this.#count + 1, this.#buffer.length);
       if (LEVELS.indexOf(level) >= LEVELS.indexOf(this.level)) {
-        if (this.mirror) globalThis.console?.[level === "debug" ? "log" : level]?.(Log.line(entry));
+        if (this.mirror) globalThis.console?.[level === "debug" ? "log" : level]?.(RalLog.line(entry));
         this.emit("entry", entry);
       }
     } catch {
@@ -139,7 +139,7 @@ export class Log extends Emitter {
 
   /** The buffered entries as readable lines. Timestamps are UTC. */
   text(filter) {
-    return this.entries(filter).map(Log.line).join("\n");
+    return this.entries(filter).map(RalLog.line).join("\n");
   }
 
   /** Empties the buffer; `seq` keeps counting. */

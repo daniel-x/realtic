@@ -4,7 +4,7 @@
  * @property {string} url `signal.php` endpoint (PHP server) or `ws://`/`wss://` URL (Node server)
  * @property {"polling" | "websocket"} [type] defaults to "websocket" for ws/wss URLs, else "polling"
  * @property {string} [group]
- * @property {number} [fastMs] polling only, see PollingSignaling
+ * @property {number} [fastMs] polling only, see RalPollingSignaling
  * @property {number} [idleMs] polling only
  */
 /**
@@ -29,7 +29,7 @@ export type SignalingOptions = {
     type?: "polling" | "websocket";
     group?: string;
     /**
-     * polling only, see PollingSignaling
+     * polling only, see RalPollingSignaling
      */
     fastMs?: number;
     /**

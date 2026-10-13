@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { encode, decode, rewriteIdx, rewriteLifetime, aad, serial, split, Reassembler, TYPE, FLAG, BASE_HEADER } from "../../src/transport/framing.js";
-import { FakeClock } from "../../src/util/clock.js";
+import { RalFakeClock } from "../../src/util/clock.js";
 
 test("encode/decode base header", () => {
   const payload = new Uint8Array([1, 2, 3]);
@@ -46,7 +46,7 @@ test("serial arithmetic wraps", () => {
 });
 
 test("split and reassemble in any order", () => {
-  const clock = new FakeClock();
+  const clock = new RalFakeClock();
   const data = new Uint8Array(1000).map((_, i) => i & 255);
   const parts = split(data, 300);
   assert.equal(parts.length, 4);
@@ -59,7 +59,7 @@ test("split and reassemble in any order", () => {
 });
 
 test("reassembler drops stale and duplicate fragments", () => {
-  const clock = new FakeClock();
+  const clock = new RalFakeClock();
   const r = new Reassembler(clock, 1000);
   assert.equal(r.add("a", 0, 2, new Uint8Array(5)), null);
   assert.equal(r.add("a", 0, 2, new Uint8Array(5)), null);

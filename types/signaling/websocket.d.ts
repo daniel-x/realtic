@@ -4,7 +4,7 @@
  * server. Reconnects with backoff; messages sent while disconnected are dropped (the library
  * retries what matters, and stale signaling is worse than lost signaling, doc §2.1).
  */
-export class WebSocketSignaling {
+export class RalWebSocketSignaling {
     /**
      * @param {string} url server URL, e.g. `wss://example.com/signal`
      * @param {string} selfId

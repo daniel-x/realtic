@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ChannelSender, ChannelReceiver, INITIAL_CREDIT } from "../../src/channel/reliability.js";
-import { FakeClock } from "../../src/util/clock.js";
+import { RalFakeClock } from "../../src/util/clock.js";
 
 function pair(mode, { lossy = () => false, window = 1 << 20, bufferLimit } = {}) {
-  const clock = new FakeClock();
+  const clock = new RalFakeClock();
   const delivered = [];
   let up = true;
   const wire = [];
@@ -81,7 +81,7 @@ test("outage buffer overflow throws OperationError", () => {
 });
 
 test("credit limits bytes in flight", () => {
-  const clock = new FakeClock();
+  const clock = new RalFakeClock();
   const sent = [];
   const s = new ChannelSender({ mode: { ordered: true }, clock, transmit: (m) => (sent.push(m.seq), true) });
   const size = INITIAL_CREDIT / 4;
@@ -102,7 +102,7 @@ test("receiver grants credit as it delivers", () => {
 });
 
 test("maxPacketLifeTime: expired queued messages are dropped", () => {
-  const clock = new FakeClock();
+  const clock = new RalFakeClock();
   let open = false;
   const sent = [];
   const s = new ChannelSender({ mode: { ordered: false, maxPacketLifeTime: 100 }, clock, transmit: (m) => (open ? (sent.push(m), true) : false) });

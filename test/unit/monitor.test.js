@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { LivenessMonitor } from "../../src/liveness/monitor.js";
 import { Heartbeat } from "../../src/liveness/heartbeat.js";
-import { FakeClock } from "../../src/util/clock.js";
+import { RalFakeClock } from "../../src/util/clock.js";
 
 function monitor(clock) {
   const changes = [];
@@ -12,7 +12,7 @@ function monitor(clock) {
 }
 
 test("silence goes slow then stale; data restores ok", () => {
-  const clock = new FakeClock();
+  const clock = new RalFakeClock();
   const { m, changes } = monitor(clock);
   clock.advance(5000);
   assert.deepEqual(changes, [["slow", 1000], ["stale", 5000]]);
@@ -21,7 +21,7 @@ test("silence goes slow then stale; data restores ok", () => {
 });
 
 test("media arrivals count as liveness", () => {
-  const clock = new FakeClock();
+  const clock = new RalFakeClock();
   const { m, changes } = monitor(clock);
   for (let t = 0; t < 4000; t += 250) {
     clock.advance(250);
@@ -31,7 +31,7 @@ test("media arrivals count as liveness", () => {
 });
 
 test("background mode uses consent and longer thresholds", () => {
-  const clock = new FakeClock();
+  const clock = new RalFakeClock();
   const { m, changes } = monitor(clock);
   m.setBackground(true);
   for (let t = 0; t < 30000; t += 5000) {
@@ -44,7 +44,7 @@ test("background mode uses consent and longer thresholds", () => {
 });
 
 test("heartbeat beats only when idle", () => {
-  const clock = new FakeClock();
+  const clock = new RalFakeClock();
   let beats = 0;
   const hb = new Heartbeat(clock, 500, () => beats++);
   hb.start();

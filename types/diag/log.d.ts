@@ -12,7 +12,7 @@ export const LEVELS: string[];
  * Ring buffer logger (section 12.1). Records all levels; `level` filters only the `entry` event
  * and the console mirror. Never throws.
  */
-export class Log extends Emitter {
+export class RalLog extends Emitter {
     /** Formats one entry as a line. */
     static line(e: any): string;
     /**

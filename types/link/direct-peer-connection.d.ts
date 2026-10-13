@@ -96,7 +96,7 @@ declare function defineClass(Base: typeof RTCPeerConnection): {
         impolite: boolean;
         config: Readonly<typeof import("../config.js").DEFAULTS>;
         clock: import("../util/clock.js").Clock;
-        log: ReturnType<import("../diag/log.js").Log["scope"]>;
+        log: ReturnType<import("../diag/log.js").RalLog["scope"]>;
         hooks: DirectHooks;
     }): {
         "__#private@#hooks": DirectHooks;

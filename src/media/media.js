@@ -6,7 +6,7 @@ import { randomId } from "../util/ids.js";
  * A published local track (plan section 3). `replaceTrack` swaps the track on every sender
  * without renegotiation (doc §6).
  */
-export class Publication {
+export class RalPublication {
   #media;
 
   constructor(media, track, { tag = track.kind, to = "all" } = {}) {
@@ -51,7 +51,7 @@ export class Publication {
  * received tracks feed the stable streams.
  */
 export class MediaManager {
-  /** @type {Map<string, Publication>} */
+  /** @type {Map<string, RalPublication>} */
   pubs = new Map();
   /** link id -> Map<source key, {slot, info, active}> */
   #sending = new Map();
@@ -79,14 +79,14 @@ export class MediaManager {
    * @param {{tag?: string, to?: "all" | string[]}} [options]
    */
   publish(track, options) {
-    const pub = new Publication(this, track, options);
+    const pub = new RalPublication(this, track, options);
     this.pubs.set(pub.id, pub);
     this.l.info("publish", { pub: pub.id, kind: pub.kind, tag: pub.tag, to: pub.to === "all" ? "all" : [...pub.to] });
     this.#group.mediaChanged();
     return pub;
   }
 
-  /** @param {Publication} pub */
+  /** @param {RalPublication} pub */
   unpublish(pub) {
     this.pubs.delete(pub.id);
     this.l.info("unpublish", { pub: pub.id });

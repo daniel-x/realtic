@@ -101,7 +101,7 @@ export class RalPeerGroup extends Emitter {
         generateCertificate(keygenAlgorithm: AlgorithmIdentifier): Promise<RTCCertificate>;
     };
     autoPeers: boolean;
-    log: Log;
+    log: RalLog;
     onListenerError: (error: any, name: any) => void;
     l: {
         debug: (msg: any, data: any) => void;
@@ -167,7 +167,7 @@ export class RalPeerGroup extends Emitter {
     publish(track: MediaStreamTrack, options?: {
         tag?: string;
         to?: "all" | string[];
-    }): import("./index.js").Publication;
+    }): import("./index.js").RalPublication;
     /**
      * Sets which media of `origin` this side wants. Unsubscribed flows stop at their source.
      * @param {string} origin
@@ -218,7 +218,7 @@ export class RalPeerGroup extends Emitter {
 }
 import { Emitter } from "./util/emitter.js";
 import { RalPeerConnection } from "./peer-connection.js";
-import { Log } from "./diag/log.js";
+import { RalLog } from "./diag/log.js";
 import { SignalingRouter } from "./signaling/router.js";
 import { MediaManager } from "./media/media.js";
 import { Routing } from "./routing/route.js";

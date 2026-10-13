@@ -20,7 +20,7 @@
  * In-memory signaling hub for tests and same-page demos. Messages are delivered asynchronously;
  * the hub can be taken down, delayed and made to duplicate messages.
  */
-export class MemoryHub {
+export class RalMemoryHub {
   #members = new Map();
 
   constructor({ delayMs = 0, duplicate = false } = {}) {

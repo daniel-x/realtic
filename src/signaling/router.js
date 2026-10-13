@@ -26,7 +26,7 @@ export class SignalingRouter {
    * @param {() => import("./adapter.js").SignalingAdapter} options.adapter
    * @param {(id: string) => import("../link/direct-peer-connection.js").RalDirectPeerConnection | undefined} options.link
    * @param {(target: string) => string | undefined} options.relayFor neighbor that has a live link to target
-   * @param {ReturnType<import("../diag/log.js").Log["scope"]>} options.log
+   * @param {ReturnType<import("../diag/log.js").RalLog["scope"]>} options.log
    * @param {{outgoingSignal?: (to: string, msg: object) => (object | Promise<object>)}} [options.hooks]
    */
   constructor({ selfId, adapter, link, relayFor, log, hooks }) {

@@ -1,6 +1,6 @@
 /**
  * Injectable clock. Library code takes time and timers only from a clock object, so unit tests
- * can drive time with `FakeClock`.
+ * can drive time with `RalFakeClock`.
  * @typedef {object} Clock
  * @property {() => number} now milliseconds, monotonic within a clock
  * @property {() => number} wallNow UTC milliseconds since the epoch
@@ -12,7 +12,7 @@
 /** @type {Clock} */
 export const realClock: Clock;
 /** Deterministic clock for tests. `advance(ms)` runs due timers in order. */
-export class FakeClock {
+export class RalFakeClock {
     constructor(epoch?: number);
     now(): number;
     wallNow(): number;
@@ -28,7 +28,7 @@ export class FakeClock {
 }
 /**
  * Injectable clock. Library code takes time and timers only from a clock object, so unit tests
- * can drive time with `FakeClock`.
+ * can drive time with `RalFakeClock`.
  */
 export type Clock = {
     /**

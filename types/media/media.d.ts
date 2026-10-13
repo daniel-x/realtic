@@ -2,7 +2,7 @@
  * A published local track (plan section 3). `replaceTrack` swaps the track on every sender
  * without renegotiation (doc §6).
  */
-export class Publication {
+export class RalPublication {
     constructor(media: any, track: any, { tag, to }?: {
         tag?: any;
         to?: string;
@@ -35,8 +35,8 @@ export class Publication {
 export class MediaManager {
     /** @param {object} group internal group interface */
     constructor(group: object);
-    /** @type {Map<string, Publication>} */
-    pubs: Map<string, Publication>;
+    /** @type {Map<string, RalPublication>} */
+    pubs: Map<string, RalPublication>;
     l: any;
     streams: StableStreams;
     /**
@@ -46,9 +46,9 @@ export class MediaManager {
     publish(track: MediaStreamTrack, options?: {
         tag?: string;
         to?: "all" | string[];
-    }): Publication;
-    /** @param {Publication} pub */
-    unpublish(pub: Publication): void;
+    }): RalPublication;
+    /** @param {RalPublication} pub */
+    unpublish(pub: RalPublication): void;
     /** Replaces the track of a source on every link that carries it. */
     replaceSource(key: any, track: any): Promise<void>;
     /**

@@ -13,7 +13,7 @@ export class Session extends Emitter {
      * @param {Readonly<typeof import("../config.js").DEFAULTS>} options.config
      * @param {import("../util/clock.js").Clock} options.clock
      * @param {(e: {type: number, channelId: number, seq: number, payload: Uint8Array, lifetime?: number}, key: string) => boolean} options.transmit
-     * @param {ReturnType<import("../diag/log.js").Log["scope"]>} options.log
+     * @param {ReturnType<import("../diag/log.js").RalLog["scope"]>} options.log
      */
     constructor({ impolite, config, clock, transmit, log }: {
         impolite: boolean;
@@ -26,7 +26,7 @@ export class Session extends Emitter {
             payload: Uint8Array;
             lifetime?: number;
         }, key: string) => boolean;
-        log: ReturnType<import("../diag/log.js").Log["scope"]>;
+        log: ReturnType<import("../diag/log.js").RalLog["scope"]>;
     });
     impolite: boolean;
     config: Readonly<Readonly<{

@@ -1,10 +1,10 @@
-// PollingSignaling against the PHP reference server. Skipped when no PHP binary is available.
+// RalPollingSignaling against the PHP reference server. Skipped when no PHP binary is available.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { PollingSignaling } from "../../src/signaling/polling.js";
+import { RalPollingSignaling } from "../../src/signaling/polling.js";
 import { createSignaling } from "../../src/signaling/create.js";
-import { WebSocketSignaling } from "../../src/signaling/websocket.js";
+import { RalWebSocketSignaling } from "../../src/signaling/websocket.js";
 import { createPhpServer } from "../integration/harness/php-server.js";
 
 const php = process.env.REALTIC_PHP ?? "php";
@@ -29,7 +29,7 @@ async function until(fn, ms = 5000) {
 }
 
 function client(id, group) {
-  const a = new PollingSignaling(server.url, id, { group, fastMs: 50, idleMs: 200 });
+  const a = new RalPollingSignaling(server.url, id, { group, fastMs: 50, idleMs: 200 });
   a.got = [];
   a.presence = [];
   a.onmessage = (from, msg) => a.got.push({ from, msg });
@@ -40,10 +40,10 @@ function client(id, group) {
 
 test("createSignaling picks the adapter from the URL", () => {
   const ws = createSignaling({ url: "ws://localhost:1/signal", group: "r" }, "A");
-  assert.ok(ws instanceof WebSocketSignaling);
+  assert.ok(ws instanceof RalWebSocketSignaling);
   ws.close();
   const p = createSignaling({ url: "http://localhost:1/signal.php" }, "A");
-  assert.ok(p instanceof PollingSignaling);
+  assert.ok(p instanceof RalPollingSignaling);
   p.close();
   assert.throws(() => createSignaling({ url: "x", type: "carrier-pigeon" }, "A"), TypeError);
 });

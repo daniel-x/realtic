@@ -2,7 +2,7 @@ import { Emitter } from "./util/emitter.js";
 import { realClock } from "./util/clock.js";
 import { randomId } from "./util/ids.js";
 import { makeConfig, PROTOCOL, VERSION } from "./config.js";
-import { Log } from "./diag/log.js";
+import { RalLog } from "./diag/log.js";
 import { diagnosticReport } from "./diag/report.js";
 import { Dedupe } from "./signaling/queue.js";
 import { SignalingRouter, RELAYABLE } from "./signaling/router.js";
@@ -77,7 +77,7 @@ export class RalPeerGroup extends Emitter {
     this.signaling = signaling;
     this.RTC = RTC;
     this.autoPeers = autoPeers;
-    this.log = new Log({ capacity: this.config.logCapacity, level: this.config.logLevel, console: this.config.logConsole, redact: this.config.logRedact, clock });
+    this.log = new RalLog({ capacity: this.config.logCapacity, level: this.config.logLevel, console: this.config.logConsole, redact: this.config.logRedact, clock });
     this.onListenerError = (error, name) => this.log.write("error", "app", `listener for ${name} threw`, { error: error?.message, stack: error?.stack });
     this.l = this.log.scope("signaling");
     this.hooks = this.config.testHooks ?? {};
