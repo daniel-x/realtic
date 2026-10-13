@@ -1,17 +1,14 @@
 // Shared helpers for integration scenarios.
 import { Scenario, sleep, waitFor, PAIRINGS, pairings, closeBrowsers } from "./harness/scenario.js";
+import { FAST_TIMINGS } from "./harness/timing.js";
 
 export { sleep, waitFor, PAIRINGS, pairings, closeBrowsers };
-export { ms, tolerance, scaleTiming, TIME_SCALE_FACTOR } from "./harness/timing.js";
+export { T, FAST_TIMINGS, testConfig, effective } from "./harness/timing.js";
 
 /** Fast timings for recovery tests, so a scenario does not take minutes. */
-export const FAST_RECOVERY = {
-  iceRestartBackoffMs: [500, 1500],
-  recoveryStepTimeoutMs: 3000,
-  rebuildAttempts: 1,
-  reprobeIntervalsMs: [4000, 6000],
-  connectTimeoutMs: 8000,
-};
+export const FAST_RECOVERY = FAST_TIMINGS
+  ? { rebuildAttempts: 1 }
+  : { iceRestartBackoffMs: [500, 1500], recoveryStepTimeoutMs: 3000, rebuildAttempts: 1, reprobeIntervalsMs: [4000, 6000], connectTimeoutMs: 8000 };
 
 /**
  * Runs `fn(s)` with a started scenario; saves artifacts on failure and always stops it.

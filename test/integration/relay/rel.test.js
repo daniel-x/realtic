@@ -4,7 +4,7 @@ import { describe, test, after } from "node:test";
 import assert from "node:assert/strict";
 import {
   withScenario, sleep, waitFor, PAIRINGS, pairings, closeBrowsers, states, openChannel, messages,
-  sendMany, assertSequence, logMatches, FAST_RECOVERY, events, ms, scaleTiming,
+  sendMany, assertSequence, logMatches, FAST_RECOVERY, events, testConfig, effective, FAST_TIMINGS,
 } from "../common.js";
 import { createServer as createTurnServer } from "turn-server";
 
@@ -38,6 +38,22 @@ async function waitRoute(s, p, q, kind, via, timeoutMs = 30000) {
   }, timeoutMs, `${s.id(p)} routes to ${s.id(q)} via ${kind} ${viaId ?? ""}`);
 }
 
+/** Polls `count()` until it reaches `target` or stops growing for `quietMs`, at most `timeoutMs`. */
+async function untilSettled(count, target, quietMs, timeoutMs) {
+  const end = Date.now() + timeoutMs;
+  let last = -1;
+  let since = Date.now();
+  while (Date.now() < end) {
+    const n = await count();
+    if (n >= target) return;
+    if (n !== last) {
+      last = n;
+      since = Date.now();
+    } else if (Date.now() - since >= quietMs) return;
+    await sleep(200);
+  }
+}
+
 /** Starts a steady numbered message stream p -> q, returns a stop function. */
 function stream(s, p, q, label, prefix, everyMs = 50) {
   let n = 0;
@@ -57,7 +73,8 @@ function stream(s, p, q, label, prefix, everyMs = 50) {
   };
 }
 
-const FAST = { ...FAST_RECOVERY, linkStateIntervalMs: 1000 };
+const FAST = FAST_TIMINGS ? FAST_RECOVERY : { ...FAST_RECOVERY, linkStateIntervalMs: 1000 };
+const F = effective(FAST);
 
 for (const pairing of pairings()) {
   for (const relayOther of pairing === "mixed" ? [false] : [false, true]) {
@@ -126,7 +143,7 @@ for (const pairing of pairings()) {
           await waitRoute(s, 0, 1, "relay", standby, 10000);
           const switched = (await events(s, 0, t0, "route")).find((e) => e.peer === s.id(1));
           console.log(`    REL-3 ${tag}: switched to standby after ${switched ? switched.time - t0 : "?"} ms`);
-          assert.ok(switched && switched.time - t0 < Math.max(ms(2500), 1000), "early switch at slow");
+          assert.ok(switched && switched.time - t0 < Math.max(2.5 * F.SLOW_CONNECTION_MS, 1000), "early switch at slow");
           await sleep(1500);
           const sent = await stop();
           await waitFor(async () => (await messages(s, 1, 0, "chat")).length >= sent, 15000, "all messages");
@@ -193,7 +210,7 @@ for (const pairing of pairings()) {
           await s.meshAll();
           await waitRoute(s, 0, 1, "direct");
           await openChannel(s, 0, 1, "chat");
-          await sleep(2500);
+          await sleep(FAST_TIMINGS ? 1000 : 2500);
           const stop = stream(s, 0, 1, "chat", "m");
           await sleep(500);
           const t0 = Date.now();
@@ -213,17 +230,17 @@ for (const pairing of pairings()) {
           const r = await waitRoute(s, 0, 1, "relay");
           const active = s.index(r.via);
           await openChannel(s, 0, 1, "chat");
-          await sleep(3000);
+          await sleep(F.switchHoldMs);
           const t0 = Date.now();
           const stop = stream(s, 0, 1, "chat", "m", 100);
           for (let i = 0; i < 10; i++) {
             s.block(active, 1, i % 2 === 0);
-            await sleep(ms(2000));
+            await sleep((2 * F.switchHoldMs) / 3);
           }
           s.block(active, 1, false);
           const sent = await stop();
           const changes = (await events(s, 0, t0, "route")).filter((e) => e.peer === s.id(1));
-          console.log(`    REL-7 ${tag}: ${changes.length} route changes in ${ms(20000)} ms`);
+          console.log(`    REL-7 ${tag}: ${changes.length} route changes in ${(20 * F.switchHoldMs) / 3} ms`);
           assert.ok(changes.length <= 6, `route changes ${changes.length}`);
           await waitFor(async () => (await messages(s, 1, 0, "chat")).length >= sent, 20000, "all messages");
           assertSequence(assert, await messages(s, 1, 0, "chat"), "m", sent);
@@ -239,11 +256,11 @@ for (const pairing of pairings()) {
           const r = await route(s, 0, 1);
           const active = s.index(r.via);
           const t0 = Date.now();
-          const busy = s.eval(active, (d) => window.t.hook.busy(d), ms(8000));
+          const busy = s.eval(active, (d) => window.t.hook.busy(d), 1.6 * F.STALE_CONNECTION_MS);
           await waitFor(async () => {
             const x = await route(s, 0, 1);
             return x?.kind === "relay" && x.via !== r.via;
-          }, Math.max(ms(6000), 3000), "switch away from the frozen relay");
+          }, Math.max(1.2 * F.STALE_CONNECTION_MS, 3000), "switch away from the frozen relay");
           console.log(`    REL-8 ${tag}: switched after ${Date.now() - t0} ms`);
           await busy;
           await sendMany(s, 0, 1, "chat", "f", 20);
@@ -261,7 +278,7 @@ for (const pairing of pairings()) {
           await page.waitForFunction(() => window.t?.ready);
           const newId = `R${Math.random().toString(36).slice(2, 6)}`;
           await page.exposeFunction("__noop", () => {}).catch(() => {});
-          await page.evaluate((o) => window.t.start(o), { id: newId, signaling: s.server.signaling, config: scaleTiming(FAST), hooks: true });
+          await page.evaluate((o) => window.t.start(o), { id: newId, signaling: s.server.signaling, config: testConfig(FAST), hooks: true });
           s.pages.delete(oldId);
           s.pages.set(newId, page);
           s.ids[2] = newId;
@@ -286,11 +303,18 @@ for (const pairing of pairings()) {
             await waitFor(async () => (await s.eval(1, (k) => window.t.frames(k).length, `${s.id(0)}:noise`)) >= 0, 1000, "");
             s.rule(s.id(2), s.id(1), { bandwidth: 600000 });
             s.rule(s.id(2), s.id(3), { bandwidth: 300000 });
-            await sleep(15000);
-            const toC = await s.eval(0, (id) => window.t.outboundBitrate(id, 4000), s.id(2));
-            const params = await s.eval(0, (id) => window.t.senderParams(id), s.id(2));
+            let toC = Infinity;
+            let params = [];
+            const budgeted = () => params.flat().some((e) => e?.maxBitrate && e.maxBitrate <= 300000 * 1.1);
+            await waitFor(async () => {
+              params = await s.eval(0, (id) => window.t.senderParams(id), s.id(2));
+              if (!budgeted()) return false;
+              toC = await s.eval(0, (id) => window.t.outboundBitrate(id, 2000), s.id(2));
+              return toC < 300000 * 1.4;
+            }, 25000, "A follows the minimum budget").catch(() => {});
             const cBudgets = await s.eval(2, () => window.t.stats().budgets);
             console.log(`    REL-10 ${tag}: A->C ${Math.round(toC / 1000)} kbps, A params ${JSON.stringify(params)}, C budgets ${JSON.stringify(cBudgets)}`);
+            assert.ok(budgeted(), `A's sender uses the minimum budget: ${JSON.stringify(params)}`);
             assert.ok(toC < 300000 * 1.4, `A sends at about the minimum budget: ${toC}`);
           });
         });
@@ -303,9 +327,12 @@ for (const pairing of pairings()) {
             await waitRoute(s, 0, 1, "relay", 2);
             await waitFor(async () => (await s.eval(1, (k) => window.t.frames(k).length, `${s.id(0)}:camera`)) > 10, 20000, "video at B");
             await s.eval(1, (id) => window.t.setSubscription(id, { video: false }), s.id(0));
-            await sleep(3000);
-            const toB = await s.eval(2, (id) => window.t.outboundBitrate(id, 2000), s.id(1));
-            const toC = await s.eval(0, (id) => window.t.outboundBitrate(id, 2000), s.id(2));
+            let toB = Infinity;
+            let toC = Infinity;
+            await waitFor(async () => {
+              [toB, toC] = await Promise.all([s.eval(2, (id) => window.t.outboundBitrate(id, 1000), s.id(1)), s.eval(0, (id) => window.t.outboundBitrate(id, 1000), s.id(2))]);
+              return toB < 20000 && toC < 20000;
+            }, 15000, "flows stopped").catch(() => {});
             console.log(`    REL-11 ${tag}: C->B ${Math.round(toB / 1000)} kbps, A->C ${Math.round(toC / 1000)} kbps`);
             assert.ok(toB < 20000, "C stopped forwarding");
             assert.ok(toC < 20000, "A stopped sending");
@@ -338,7 +365,8 @@ for (const pairing of pairings()) {
         });
         try {
           const iceServers = [{ urls: `turn:127.0.0.1:${turnPort}?transport=udp`, username: "test", credential: "secret" }];
-          await withScenario(`REL-13-${tag}`, { browsers: browsersFor(pairing, 2, relayOther), config: FAST, iceServers }, async (s) => {
+          const turnSooner = FAST_TIMINGS ? { iceRestartBackoffMs: [100], rebuildAttempts: 0 } : {};
+          await withScenario(`REL-13-${tag}`, { browsers: browsersFor(pairing, 2, relayOther), config: { ...FAST, ...turnSooner }, iceServers }, async (s) => {
             await meshWithBlocks(s, [[0, 1]]);
             await waitFor(async () => (await route(s, 0, 1))?.candidateType === "relay" && (await s.eval(0, (id) => window.t.state(id), s.id(1))) === "connected", 60000, "TURN route");
             console.log(`    REL-13 ${tag}: TURN route in use`);
@@ -362,7 +390,7 @@ for (const pairing of pairings()) {
             await s.eval(0, () => window.t.publishCounter("camera"));
             await meshWithBlocks(s, [[0, 1]]);
             await waitRoute(s, 0, 1, "relay", 3, 30000);
-            await sleep(3000);
+            await sleep(F.switchHoldMs);
             assert.equal((await route(s, 0, 1)).via, s.id(3), "relay that cannot decode VP8 is not used");
             const flows = await s.eval(0, (id) => window.t.stats().peers[id].flows, s.id(1));
             assert.ok(!flows.some((f) => f.via === s.id(2)), "no flow through the incompatible relay");
@@ -380,20 +408,20 @@ for (const pairing of pairings()) {
           await openChannel(s, 0, 1, "rt8", { ordered: false, maxRetransmits: 8 });
           s.rule(s.id(0), s.id(2), { delay: 200 });
           s.rule(s.id(2), s.id(0), { delay: 200 });
-          await sleep(4000);
+          await sleep(Math.max(2500, 4 * F.linkStateIntervalMs));
           await sendMany(s, 0, 1, "life", "old", 20);
-          await sleep(1500);
+          await sleep(1000);
           assert.equal((await messages(s, 1, 0, "life")).length, 0, "expired messages dropped at the relay");
           s.rule(s.id(0), s.id(2), { delay: 0 });
           s.rule(s.id(2), s.id(0), { delay: 0 });
-          await sleep(4000);
+          await sleep(Math.max(2500, 4 * F.linkStateIntervalMs));
           await sendMany(s, 0, 1, "life", "new", 20);
           await waitFor(async () => (await messages(s, 1, 0, "life")).length >= 10, 8000, "fresh messages arrive");
           s.rule(s.id(2), s.id(1), { loss: 0.25 });
           s.rule(s.id(1), s.id(2), { loss: 0.25 });
           await sendMany(s, 0, 1, "rt0", "z", 200);
           await sendMany(s, 0, 1, "rt8", "e", 200);
-          await waitFor(async () => (await messages(s, 1, 0, "rt8")).length >= 195, 40000, "maxRetransmits 8 recovers").catch(() => {});
+          await untilSettled(async () => (await messages(s, 1, 0, "rt8")).length, 195, 2000, 40000);
           const z = (await messages(s, 1, 0, "rt0")).length;
           const e = (await messages(s, 1, 0, "rt8")).length;
           console.log(`    REL-15 ${tag}: maxRetransmits 0 delivered ${z}/200, maxRetransmits 8 delivered ${e}/200`);
@@ -410,7 +438,8 @@ for (const pairing of pairings()) {
       test("REL-16 relay authorization", async () => {
         await withScenario(`REL-16-${tag}`, { browsers: browsersFor(pairing, 3, relayOther), config: FAST, peerConfig: { 2: { relayDenyAll: true } } }, async (s) => {
           await meshWithBlocks(s, [[0, 1]]);
-          await sleep(8000);
+          await waitFor(async () => (await logMatches(s, 2, /relay request rejected/)).length > 0, 15000, "relay request rejected");
+          await sleep(1000);
           assert.notEqual(await s.eval(0, (id) => window.t.state(id), s.id(1)), "connected", "allowRelay refuses");
           assert.ok((await logMatches(s, 2, /relay request rejected/)).length > 0, "rejection logged");
           await s.eval(0, ([via, target]) => window.t.hook.sendCtl(via, { t: "relay-request", flow: "x1", origin: window.t.group.selfId, target, role: "active" }), [s.id(2), "nonmember"]);
@@ -447,21 +476,21 @@ for (const pairing of pairings()) {
           if (s.page(1).browserName === "chromium") {
             const cdp = await s.page(1).context().newCDPSession(s.page(1));
             await cdp.send("Page.setWebLifecycleState", { state: "frozen" });
-            await sleep(12000);
+            await sleep(Math.max(2.4 * F.STALE_CONNECTION_MS, 6000));
             const mid = await states(s, 0, 1, t0);
             await cdp.send("Page.setWebLifecycleState", { state: "active" });
             assert.ok(!mid.some((e) => e.state === "reconnecting"), `A keeps the route to the hidden peer: ${JSON.stringify(mid)}`);
           } else {
-            await sleep(8000);
+            await sleep(Math.max(1.6 * F.STALE_CONNECTION_MS, 4000));
             assert.ok(!(await states(s, 0, 1, t0)).some((e) => e.state === "reconnecting"), "A keeps the route to the hidden peer");
           }
           t0 = Date.now();
           s.block(2, 1);
           s.server.controls.down = true;
-          await waitFor(async () => (await s.eval(0, (id) => window.t.state(id), s.id(1))) !== "connected", 25000, "A reacts");
+          await waitFor(async () => (await s.eval(0, (id) => window.t.state(id), s.id(1))) !== "connected", F.BACKGROUND_STALE_MS + 5000, "A reacts");
           const reacted = Date.now() - t0;
           console.log(`    REL-18 ${tag}: A reacted after ${reacted} ms`);
-          assert.ok(reacted <= 20000 + 1500, "within BACKGROUND_STALE_MS");
+          assert.ok(reacted <= F.BACKGROUND_STALE_MS + 1500, "within BACKGROUND_STALE_MS");
         });
       });
     });

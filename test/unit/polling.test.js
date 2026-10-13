@@ -79,9 +79,9 @@ test("server down: connected goes false and recovers", { skip: !hasPhp && "no PH
 test("messages to non-members are dropped, bad ids rejected", { skip: !hasPhp && "no PHP" }, async () => {
   const response = await fetch(`${server.url}?group=r3&id=${encodeURIComponent("bad id")}`, { method: "POST", body: "{}" });
   assert.equal(response.status, 400);
-  const a = client("E", "r3");
-  await until(() => a.presence.length === 0 && a.connected);
-  a.send("nobody", { t: "cand" });
+  const post = (body) => fetch(`${server.url}?group=r3&id=E`, { method: "POST", body: JSON.stringify(body) });
+  assert.equal((await post({})).status, 200);
+  assert.equal((await post({ send: [{ to: "nobody", msg: { t: "cand" } }] })).status, 200);
   const b = client("nobody", "r3");
   await until(() => b.presence.includes("join:E"));
   await new Promise((r) => setTimeout(r, 300));
