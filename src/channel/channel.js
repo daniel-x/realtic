@@ -45,7 +45,7 @@ function makeEvent(type, init) {
  * changes, ICE restarts and link rebuilds. Created by `peer.createChannel()` or delivered by the
  * peer's `channel` event.
  */
-export class ReatChannel extends EventTarget {
+export class RalChannel extends EventTarget {
   #state = "connecting";
   #session;
   #threshold = 0;

@@ -22,9 +22,9 @@ playing across route changes.
 ## Quick Start
 
 ```js
-import { ReatPeerGroup } from "realtic";
+import { RalPeerGroup } from "realtic";
 
-const group = new ReatPeerGroup({
+const group = new RalPeerGroup({
   signaling: { url: "https://example.com/realtic/signal.php", group: "demo" },
   iceServers: [{ urls: "stun:stun.example.com:3478" }],
   autoPeers: true,

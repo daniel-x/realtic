@@ -12,7 +12,7 @@ const VERDICT_REPEAT_MS = 1000;
 const classes = new WeakMap();
 
 /**
- * @typedef {object} DirectHooks callbacks of the owning ReatPeerConnection
+ * @typedef {object} DirectHooks callbacks of the owning RalPeerConnection
  * @property {(msg: object) => void} signal sends a signaling message (session ids added)
  * @property {(task: () => Promise<void>) => void} enqueue runs a negotiation task in order
  * @property {() => void} open `ctl` opened
@@ -31,10 +31,10 @@ const classes = new WeakMap();
  * @property {() => void} connectTimeout `ctl` did not open within `connectTimeoutMs`
  */
 
-/** @typedef {InstanceType<ReturnType<typeof defineClass>>} ReatDirectPeerConnection */
+/** @typedef {InstanceType<ReturnType<typeof defineClass>>} RalDirectPeerConnection */
 
 /**
- * The ReatDirectPeerConnection class on top of `Base`, the browser's RTCPeerConnection or an
+ * The RalDirectPeerConnection class on top of `Base`, the browser's RTCPeerConnection or an
  * injected subclass of it. Classes are cached per base.
  * @param {typeof RTCPeerConnection} Base
  */
@@ -49,10 +49,10 @@ function defineClass(Base) {
   /**
    * One RTCPeerConnection to a neighbor, with realtic's state for it (plan section 5): transport
    * channels and `ctl`, negotiation, liveness, metrics and media slots. It is never replaced
-   * under its owner; a rebuild creates a new one. realtic's members carry the `reat` prefix so
+   * under its owner; a rebuild creates a new one. realtic's members carry the `ral` prefix so
    * they cannot collide with the WebRTC API.
    */
-  return class ReatDirectPeerConnection extends Base {
+  return class RalDirectPeerConnection extends Base {
     #hooks;
     #config;
     #clock;
@@ -85,14 +85,14 @@ function defineClass(Base) {
     #stableWaiters = new Set();
 
     /** Session id of this connection. */
-    reatSession = sessionId();
+    ralSession = sessionId();
     /** Session id of the remote side's connection, once known. */
-    reatRemoteSession = null;
+    ralRemoteSession = null;
 
     /**
      * @param {RTCConfiguration} rtcConfig
      * @param {object} options
-     * @param {object} options.connection the owning ReatPeerConnection
+     * @param {object} options.connection the owning RalPeerConnection
      * @param {string} options.remoteId
      * @param {boolean} options.impolite
      * @param {Readonly<typeof import("../config.js").DEFAULTS>} options.config
@@ -102,10 +102,10 @@ function defineClass(Base) {
      */
     constructor(rtcConfig, { connection, remoteId, impolite, config, clock, log, hooks }) {
       super(rtcConfig);
-      /** The ReatPeerConnection this connection belongs to. */
-      this.reatConnection = connection;
-      this.reatRemoteId = remoteId;
-      this.reatImpolite = impolite;
+      /** The RalPeerConnection this connection belongs to. */
+      this.ralConnection = connection;
+      this.ralRemoteId = remoteId;
+      this.ralImpolite = impolite;
       this.#hooks = hooks;
       this.#config = config;
       this.#clock = clock;
@@ -129,10 +129,10 @@ function defineClass(Base) {
       });
       this.#hop.on("sent", () => this.#heartbeat.noteSent());
       this.#hop.on("drain", (key) => hooks.drain(key));
-      this.#batcher = new CandidateBatcher(clock, c.candidateBatchMs, (cands) => this.reatSignal({ t: "cand", c: cands }));
+      this.#batcher = new CandidateBatcher(clock, c.candidateBatchMs, (cands) => this.ralSignal({ t: "cand", c: cands }));
       this.#neg = new Negotiator(this, {
         impolite,
-        signal: (msg) => this.reatSignal(msg),
+        signal: (msg) => this.ralSignal(msg),
         beforeAnswer: (msg) => this.#applyGrants(msg),
         offerExtras: () => this.#offerExtras(),
         onstable: () => this.#onStable(),
@@ -162,63 +162,63 @@ function defineClass(Base) {
       }, c.connectTimeoutMs);
     }
 
-    /** True after reatRetire(). */
-    get reatClosed() {
+    /** True after ralRetire(). */
+    get ralClosed() {
       return this.#closed;
     }
 
     /** True when `ctl` is open. */
-    get reatCtlOpen() {
+    get ralCtlOpen() {
       return !this.#closed && this.#ctlOpen;
     }
 
     /** True when `ctl` is open and data arrives in time. */
-    get reatHealthy() {
-      return this.reatCtlOpen && this.#monitor.state === "ok" && this.#remoteVerdict !== "stale";
+    get ralHealthy() {
+      return this.ralCtlOpen && this.#monitor.state === "ok" && this.#remoteVerdict !== "stale";
     }
 
     /** True when the connection can carry traffic now (healthy or slow). */
-    get reatUsable() {
-      return this.reatCtlOpen && this.#monitor.state !== "stale" && this.#remoteVerdict !== "stale";
+    get ralUsable() {
+      return this.ralCtlOpen && this.#monitor.state !== "stale" && this.#remoteVerdict !== "stale";
     }
 
     /** Milliseconds since data or media last arrived (consent too in background mode). */
-    get reatSilence() {
-      return this.reatCtlOpen ? this.#monitor.silence : Infinity;
+    get ralSilence() {
+      return this.ralCtlOpen ? this.#monitor.silence : Infinity;
     }
 
     /** Liveness verdict: `ok`, `slow` or `stale`. */
-    get reatLiveness() {
+    get ralLiveness() {
       return this.#monitor.state;
     }
 
     /** True while the remote side announced background mode. */
-    get reatRemoteBackground() {
+    get ralRemoteBackground() {
       return this.#monitor.background;
     }
 
     /** Latest metrics (plan section 7.1). */
-    get reatMetrics() {
+    get ralMetrics() {
       return { ...this.#metrics, state: this.#metricState() };
     }
 
     /** True when the selected pair runs over TURN on either side. */
-    get reatViaTurn() {
+    get ralViaTurn() {
       return this.#metrics.candidateType === "relay" || this.#metrics.remoteCandidateType === "relay";
     }
 
     /** SCTP maximum message size. */
-    get reatMaxMessageSize() {
+    get ralMaxMessageSize() {
       return this.#hop.maxMessageSize;
     }
 
     /** Transport channels, for diagnostics. */
-    get reatTransports() {
+    get ralTransports() {
       return this.#hop.describe();
     }
 
     /** Total bufferedAmount over the transport channels. */
-    get reatBufferedAmount() {
+    get ralBufferedAmount() {
       return this.#hop.bufferedAmount;
     }
 
@@ -226,28 +226,28 @@ function defineClass(Base) {
      * Sends a signaling message to the neighbor, tagged with both session ids.
      * @param {object} msg
      */
-    reatSignal(msg) {
+    ralSignal(msg) {
       if (this.#closed) return;
-      this.#hooks.signal({ ...msg, s: this.reatSession, rs: this.reatRemoteSession ?? undefined });
+      this.#hooks.signal({ ...msg, s: this.ralSession, rs: this.ralRemoteSession ?? undefined });
     }
 
     /**
      * Applies an `offer`, `answer` or `cand` message.
      * @param {object} msg
      */
-    async reatHandleSignal(msg) {
+    async ralHandleSignal(msg) {
       if (msg.t === "offer") await this.#neg.handleOffer(msg);
       else if (msg.t === "answer") await this.#neg.handleAnswer(msg);
       else if (msg.t === "cand") await this.#neg.handleCandidates(msg);
     }
 
     /** Runs a negotiation round (impolite: offer; polite: `renegotiate`). */
-    reatNegotiate(reason) {
+    ralNegotiate(reason) {
       return this.#neg.negotiate(reason);
     }
 
     /** Restarts ICE now, rolling back an unanswered offer first. */
-    async reatIceRestart() {
+    async ralIceRestart() {
       if (this.#closed) return;
       if (this.signalingState === "have-local-offer") {
         this.#l.info("rolling back unanswered offer");
@@ -261,7 +261,7 @@ function defineClass(Base) {
      * Sends a control message on `ctl`.
      * @param {object} msg
      */
-    reatSendCtl(msg) {
+    ralSendCtl(msg) {
       return this.#hop.sendCtl(msg);
     }
 
@@ -271,24 +271,24 @@ function defineClass(Base) {
      * @param {string} flow
      * @param {Uint8Array} bytes
      */
-    reatSendEnvelope(key, flow, bytes) {
+    ralSendEnvelope(key, flow, bytes) {
       return this.#hop.sendEnvelope(key, flow, bytes);
     }
 
     /** Bytes queued for a flow on a transport channel. */
-    reatQueuedBytes(key, flow) {
+    ralQueuedBytes(key, flow) {
       return this.#hop.queuedBytes(key, flow);
     }
 
     /** Sends `bg` or `fg` (plan section 6.1). */
-    reatSetBackground(on) {
-      this.reatSendCtl({ t: on ? "bg" : "fg" });
+    ralSetBackground(on) {
+      this.ralSendCtl({ t: on ? "bg" : "fg" });
       if (!on) this.#heartbeat.now();
     }
 
     /** Beats and re-checks liveness now. Returns true when the connection is slow or stale. */
-    reatCheckNow() {
-      if (!this.reatCtlOpen) return false;
+    ralCheckNow() {
+      if (!this.ralCtlOpen) return false;
       this.#heartbeat.now();
       this.#monitor.check();
       return this.#monitor.state !== "ok" || this.#remoteVerdict !== "ok";
@@ -299,14 +299,14 @@ function defineClass(Base) {
      * link-state period, while the candidate pair RTT refreshes only with consent checks.
      * @param {number} ms
      */
-    reatNoteControlRtt(ms) {
+    ralNoteControlRtt(ms) {
       if (!(ms >= 0) || ms > 60000) return;
       this.#ctlRtt = this.#ctlRtt === undefined ? ms : this.#ctlRtt * 0.5 + ms * 0.5;
       this.#metrics = { ...this.#metrics, rtt: this.#ctlRtt };
     }
 
     /** Test hook: closes all transport channels, like an SCTP abort. */
-    reatAbortTransport() {
+    ralAbortTransport() {
       this.#hop.close();
     }
 
@@ -314,7 +314,7 @@ function defineClass(Base) {
      * Ends this connection. With `silent`, closing waits 30 s, so the remote side learns of a
      * rebuild only from the new session id (test hook for doc §3.6).
      */
-    reatRetire(silent = false) {
+    ralRetire(silent = false) {
       if (this.#closed) return;
       this.#closed = true;
       if (this.#connectTimer !== null) this.#clock.clearTimeout(this.#connectTimer);
@@ -368,7 +368,7 @@ function defineClass(Base) {
       this.#watchdog.clear();
       this.#monitor.reset();
       this.#heartbeat.now();
-      this.#l.info("control channel open", { session: this.reatSession });
+      this.#l.info("control channel open", { session: this.ralSession });
       this.#hooks.open();
     }
 
@@ -420,7 +420,7 @@ function defineClass(Base) {
     }
 
     #check() {
-      if (!this.reatCtlOpen) return;
+      if (!this.ralCtlOpen) return;
       this.#monitor.check();
       if (this.#monitor.state !== "ok" && this.#clock.now() - this.#lastVerdictAt >= VERDICT_REPEAT_MS) this.#sendVerdict(this.#monitor.state);
       if (this.#monitor.dataSilence >= this.#config.LIVENESS_CHECK_INTERVAL_MS && !this.#polling) this.#pollLiveness();
@@ -471,7 +471,7 @@ function defineClass(Base) {
     }
 
     async #collectStats() {
-      if (!this.reatCtlOpen) return;
+      if (!this.ralCtlOpen) return;
       try {
         const stats = await readStats(this);
         if (this.#closed) return;
@@ -497,14 +497,14 @@ function defineClass(Base) {
           cpuLimited: cpu,
           maxMessageSize: this.#hop.maxMessageSize,
         };
-        this.#hooks.metrics(this.reatMetrics, stats);
+        this.#hooks.metrics(this.ralMetrics, stats);
       } catch {
         // the connection closed while reading stats
       }
     }
 
     #metricState() {
-      if (!this.reatCtlOpen) return "down";
+      if (!this.ralCtlOpen) return "down";
       if (this.#remoteVerdict === "stale") return "stale";
       const m = this.#monitor.state;
       return m === "ok" && this.#remoteVerdict === "slow" ? "slow" : m;
@@ -519,14 +519,14 @@ function defineClass(Base) {
      * @param {string} key
      * @returns {Promise<{tr: RTCRtpTransceiver, kind: string, key: string|null}>}
      */
-    async reatAcquireSendSlot(kind, key) {
+    async ralAcquireSendSlot(kind, key) {
       if (this.#closed) throw new Error("link rebuilt");
       const idle = this.#slots.find((s) => s.kind === kind && s.key === null && s.tr.mid != null);
       if (idle) {
         idle.key = key;
         return idle;
       }
-      if (this.reatImpolite) {
+      if (this.ralImpolite) {
         const tr = this.addTransceiver(kind, { direction: "sendonly" });
         const slot = { tr, kind, key };
         this.#slots.push(slot);
@@ -559,13 +559,13 @@ function defineClass(Base) {
      * Marks a slot idle and stops sending on it. No renegotiation.
      * @param {{tr: RTCRtpTransceiver, key: string|null}} slot
      */
-    reatReleaseSendSlot(slot) {
+    ralReleaseSendSlot(slot) {
       slot.key = null;
       slot.tr.sender.replaceTrack(null).catch(() => {});
     }
 
     /** True when the slot belongs to this connection and it is not retired. */
-    reatOwnsSlot(slot) {
+    ralOwnsSlot(slot) {
       return !this.#closed && this.#slots.includes(slot);
     }
 
@@ -573,7 +573,7 @@ function defineClass(Base) {
      * The receiving transceiver with `mid`.
      * @param {string} mid
      */
-    reatTransceiver(mid) {
+    ralTransceiver(mid) {
       return this.getTransceivers().find((t) => t.mid === mid) ?? null;
     }
 
@@ -602,7 +602,7 @@ function defineClass(Base) {
     }
 
     #onSlotRequest(msg) {
-      if (!this.reatImpolite) return;
+      if (!this.ralImpolite) return;
       const tr = this.addTransceiver(msg.kind, { direction: "recvonly" });
       this.#grants.push({ req: msg.req, tr });
     }

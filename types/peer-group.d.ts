@@ -2,10 +2,10 @@
  * A group of peers in a mesh (plan section 3). The app owns membership: it calls `addPeer` and
  * `removePeer`, or enables `autoPeers` to follow the adapter's presence events.
  *
- * Events: `connection` (ReatPeerConnection) when a connection is created, `peerleft`
- * (ReatPeerConnection, reason), `presence` ({type, peer}).
+ * Events: `connection` (RalPeerConnection) when a connection is created, `peerleft`
+ * (RalPeerConnection, reason), `presence` ({type, peer}).
  */
-export class ReatPeerGroup extends Emitter {
+export class RalPeerGroup extends Emitter {
     /**
      * @param {object} options
      * @param {string} [options.selfId] fresh per page load (doc §7); generated when absent
@@ -28,16 +28,16 @@ export class ReatPeerGroup extends Emitter {
     });
     /**
      * One connection per known peer, also when it could not be opened.
-     * @type {Map<string, ReatPeerConnection>}
+     * @type {Map<string, RalPeerConnection>}
      */
-    connections: Map<string, ReatPeerConnection>;
+    connections: Map<string, RalPeerConnection>;
     /**
-     * The current ReatDirectPeerConnection of each connection that has one, i.e. every existing
-     * RTCPeerConnection. Each is owned by its ReatPeerConnection (`connection.direct`), which
+     * The current RalDirectPeerConnection of each connection that has one, i.e. every existing
+     * RTCPeerConnection. Each is owned by its RalPeerConnection (`connection.direct`), which
      * replaces the entry on a rebuild.
-     * @type {Map<string, import("./link/direct-peer-connection.js").ReatDirectPeerConnection>}
+     * @type {Map<string, import("./link/direct-peer-connection.js").RalDirectPeerConnection>}
      */
-    directConns: Map<string, import("./link/direct-peer-connection.js").ReatDirectPeerConnection>;
+    directConns: Map<string, import("./link/direct-peer-connection.js").RalDirectPeerConnection>;
     selfId: string;
     config: Readonly<{
         HEARTBEAT_IDLE_MS: 500;
@@ -132,10 +132,10 @@ export class ReatPeerGroup extends Emitter {
     /** True when TURN servers are configured. */
     get hasTurn(): boolean;
     /**
-     * Adds a peer to the group and starts connecting to it. Returns the stable ReatPeerConnection.
+     * Adds a peer to the group and starts connecting to it. Returns the stable RalPeerConnection.
      * @param {string} peerId
      */
-    addPeer(peerId: string): ReatPeerConnection;
+    addPeer(peerId: string): RalPeerConnection;
     /**
      * Removes a peer: sends `bye` and closes its link.
      * @param {string} peerId
@@ -143,10 +143,10 @@ export class ReatPeerGroup extends Emitter {
     removePeer(peerId: string, reason?: string): void;
     /**
      * The index this side uses for `peerId` on `link`, allocating and announcing a new one.
-     * @param {import("./link/direct-peer-connection.js").ReatDirectPeerConnection} link
+     * @param {import("./link/direct-peer-connection.js").RalDirectPeerConnection} link
      * @param {string} peerId
      */
-    localIndex(link: import("./link/direct-peer-connection.js").ReatDirectPeerConnection, peerId: string): any;
+    localIndex(link: import("./link/direct-peer-connection.js").RalDirectPeerConnection, peerId: string): any;
     /** Peer id for an index in the neighbor's table, or undefined. */
     remoteIndex(link: any, idx: any): any;
     /** @internal link id whose received tracks of `origin` the stable stream should use */
@@ -217,7 +217,7 @@ export class ReatPeerGroup extends Emitter {
     #private;
 }
 import { Emitter } from "./util/emitter.js";
-import { ReatPeerConnection } from "./peer-connection.js";
+import { RalPeerConnection } from "./peer-connection.js";
 import { Log } from "./diag/log.js";
 import { SignalingRouter } from "./signaling/router.js";
 import { MediaManager } from "./media/media.js";

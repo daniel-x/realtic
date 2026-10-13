@@ -1,13 +1,13 @@
 # realtic API
 
 ```js
-import { ReatPeerGroup } from "realtic";
+import { RalPeerGroup } from "realtic";
 ```
 
-## ReatPeerGroup
+## RalPeerGroup
 
 ```js
-const group = new ReatPeerGroup({
+const group = new RalPeerGroup({
   selfId,          // optional, generated when absent; use a fresh id per page load
   signaling,       // { url, group, type? } of a reference server, or an adapter (see below)
   iceServers,      // passed to RTCPeerConnection (TURN handling: config.turnMode)
@@ -18,9 +18,9 @@ const group = new ReatPeerGroup({
 
 | Member | Description |
 | ------ | ----------- |
-| `addPeer(id)` | adds a peer and starts connecting; returns the stable `ReatPeerConnection` |
+| `addPeer(id)` | adds a peer and starts connecting; returns the stable `RalPeerConnection` |
 | `removePeer(id)` | sends `bye`, closes the connection |
-| `connections` | `Map<id, ReatPeerConnection>`, one per known peer, also when it could not be opened |
+| `connections` | `Map<id, RalPeerConnection>`, one per known peer, also when it could not be opened |
 | `publish(track, { tag, to })` | publishes a local track to `"all"` or a list of peer ids; returns a `Publication` |
 | `setSubscription(origin, { audio, video, tags })` | which media of `origin` this side wants; unwanted flows stop at their source |
 | `leave()` | sends `bye` over the mesh and the signaling server (beacon when supported) and closes; called on `pagehide` automatically |
@@ -31,10 +31,10 @@ const group = new ReatPeerGroup({
 | `log` | the ring buffer logger, see below |
 | `ready` | promise, resolves when keys and capabilities are collected |
 
-Events: `connection` (ReatPeerConnection), `peerleft` (ReatPeerConnection, reason), `presence`
+Events: `connection` (RalPeerConnection), `peerleft` (RalPeerConnection, reason), `presence`
 ({ type, peer }).
 
-## ReatPeerConnection
+## RalPeerConnection
 
 The connection to one other peer of the group. It is direct, wrapping an `RTCPeerConnection`, or
 routes through a relay peer. Finding routes, keeping standby routes warm and switching routes
@@ -49,19 +49,19 @@ happen inside it.
 | `lastError`, `hint` | failure details; hints in `HINT_TEXT` |
 | `createChannel(label, init)` | end to end data channel, `init`: `ordered`, `maxRetransmits`, `maxPacketLifeTime`, `protocol` |
 | `requestLog()` | promise of the remote side's diagnostic report (needs its `shareLogWithPeers`) |
-| `rtcPeerConnection` | the current `RTCPeerConnection` to this peer (a `ReatDirectPeerConnection` subclass), null without a direct one; a rebuild replaces it; for advanced use |
+| `rtcPeerConnection` | the current `RTCPeerConnection` to this peer (a `RalDirectPeerConnection` subclass), null without a direct one; a rebuild replaces it; for advanced use |
 
-Events: `statechange` (state, reason), `routechange` (route), `channel` (ReatChannel),
+Events: `statechange` (state, reason), `routechange` (route), `channel` (RalChannel),
 `track` ({ track, stream, tag, kind, origin, pub }), `trackreplaced` ({ track, oldTrack, stream,
 tag }), `trackended` ({ track, stream, tag }).
 
 The `stream` of a `track` event is one `MediaStream` per publication. It stays the same across
 route changes, ICE restarts and rebuilds; the library swaps the track inside it.
 
-The `ReatPeerConnection` object stays the same for the life of the remote page, so UI bound to it
+The `RalPeerConnection` object stays the same for the life of the remote page, so UI bound to it
 never has to be rebuilt.
 
-## ReatChannel
+## RalChannel
 
 `RTCDataChannel`-like: `send(data)` (string, ArrayBuffer, ArrayBufferView), `close()`,
 `readyState`, `bufferedAmount`, `bufferedAmountLowThreshold`, `label`, `protocol`, `id`,
@@ -104,7 +104,7 @@ entries.
 
 ## Signaling Adapters
 
-`ReatPeerGroup({ signaling })` accepts settings `{ url, group, type, fastMs, idleMs }` and creates the
+`RalPeerGroup({ signaling })` accepts settings `{ url, group, type, fastMs, idleMs }` and creates the
 adapter with `createSignaling(settings, selfId)`. `type` defaults to `"websocket"` for `ws:` and
 `wss:` URLs and to `"polling"` otherwise.
 

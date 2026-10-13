@@ -20,11 +20,11 @@ const RESTART_REQUEST_GAP_MS = 2000;
  * routes happen inside; the object survives link rebuilds, ICE restarts and route switches, so app
  * state bound to it never has to be rebuilt (doc §3.8).
  *
- * Events: `statechange` (state, reason), `routechange` (route), `channel` (ReatChannel),
+ * Events: `statechange` (state, reason), `routechange` (route), `channel` (RalChannel),
  * `track` ({track, stream, tag, origin, kind}), `trackreplaced` ({track, oldTrack, stream, tag}),
  * `trackended` ({track, stream, tag}).
  */
-export class ReatPeerConnection extends Emitter {
+export class RalPeerConnection extends Emitter {
   #state = "connecting";
   #reason = "";
   #group;
@@ -104,9 +104,9 @@ export class ReatPeerConnection extends Emitter {
     if (!r) return null;
     if (r.kind === "direct") {
       const d = this.#direct;
-      return { kind: "direct", via: null, candidateType: d?.reatViaTurn ? "relay" : d?.reatMetrics.candidateType ?? "host" };
+      return { kind: "direct", via: null, candidateType: d?.ralViaTurn ? "relay" : d?.ralMetrics.candidateType ?? "host" };
     }
-    return { kind: "relay", via: r.via, candidateType: this.#group.directConns.get(r.via)?.reatMetrics.candidateType ?? "host" };
+    return { kind: "relay", via: r.via, candidateType: this.#group.directConns.get(r.via)?.ralMetrics.candidateType ?? "host" };
   }
 
   /** Internal route descriptor. */
@@ -115,7 +115,7 @@ export class ReatPeerConnection extends Emitter {
   }
 
   /**
-   * The current ReatDirectPeerConnection to this peer (an RTCPeerConnection), or null without one.
+   * The current RalDirectPeerConnection to this peer (an RTCPeerConnection), or null without one.
    * A rebuild replaces it.
    */
   get direct() {
@@ -279,30 +279,30 @@ export class ReatPeerConnection extends Emitter {
 
   #sendOn(route, e, key) {
     const link = route.kind === "direct" ? this.#direct : this.#group.directConns.get(route.via);
-    if (!link || !link.reatUsable) return false;
+    if (!link || !link.ralUsable) return false;
     const encrypted = route.kind === "relay";
     if (encrypted && !this.pairKey) return false;
     const flow = `${this.id}:${e.channelId}`;
     const dstIdx = route.kind === "direct" ? 1 : this.#group.localIndex(link, this.id);
     const flags = encrypted ? FLAG.ENCRYPTED : 0;
     const lifetimeFlag = e.lifetime !== undefined ? FLAG.LIFETIME : 0;
-    const mtu = Math.min(link.reatMaxMessageSize, this.#group.config.maxFragmentBytes, this.#group.routing.pathMessageSize(route));
+    const mtu = Math.min(link.ralMaxMessageSize, this.#group.config.maxFragmentBytes, this.#group.routing.pathMessageSize(route));
     const room = mtu - headerLength(FLAG.FRAGMENTED | lifetimeFlag) - (encrypted ? OVERHEAD : 0);
     const parts = split(e.payload, Math.max(256, room));
     const total = e.payload.length + parts.length * 64;
-    if (link.reatQueuedBytes(key, flow) + total > this.#group.config.relayQueueBytes) return false;
+    if (link.ralQueuedBytes(key, flow) + total > this.#group.config.relayQueueBytes) return false;
     const base = { version: this.#group.protocol.major, type: e.type, flags, srcIdx: 0, dstIdx, channelId: e.channelId, seq: e.seq, lifetime: e.lifetime };
     const fragmented = parts.length > 1;
     const envelopes = parts.map((payload, i) => (fragmented ? { ...base, fragIndex: i, fragCount: parts.length, payload } : { ...base, payload }));
     if (!encrypted) {
-      for (const env of envelopes) link.reatSendEnvelope(key, flow, encode(env));
+      for (const env of envelopes) link.ralSendEnvelope(key, flow, encode(env));
       return true;
     }
     const keyRef = this.pairKey;
     this.#encChain = this.#encChain.then(async () => {
       for (const env of envelopes) {
         const ct = await encrypt(keyRef, aad(env), env.payload);
-        link.reatSendEnvelope(key, flow, encode({ ...env, payload: ct }));
+        link.ralSendEnvelope(key, flow, encode({ ...env, payload: ct }));
       }
     }).catch((error) => this.l.warn("encryption failed", { error: error.message }));
     return true;
@@ -356,7 +356,7 @@ export class ReatPeerConnection extends Emitter {
 
   // Direct connection --------------------------------------------------------------------------
   // The only place where the RTCPeerConnection to this peer is replaced: a rebuild creates a new
-  // ReatDirectPeerConnection and retires the old one.
+  // RalDirectPeerConnection and retires the old one.
 
   /** True once the direct connection was started (after hello). */
   get directStarted() {
@@ -380,7 +380,7 @@ export class ReatPeerConnection extends Emitter {
 
   /**
    * Starts the direct connection. `hooks` are the group's handlers; each gets the current
-   * ReatDirectPeerConnection first.
+   * RalDirectPeerConnection first.
    * @param {object} hooks
    */
   startDirect(hooks) {
@@ -395,7 +395,7 @@ export class ReatPeerConnection extends Emitter {
       rebuildAttempts: c.rebuildAttempts,
       stepTimeoutMs: c.recoveryStepTimeoutMs,
       reprobeMs: c.reprobeIntervalsMs,
-      healthy: () => !!this.#direct?.reatHealthy,
+      healthy: () => !!this.#direct?.ralHealthy,
       act: (step) => this.#recoveryStep(step),
       canAddTurn: () => !this.#turnAdded && g.routing.canAddTurn(this.id),
       onreprobe: () => this.#ll.info("background re-probe"),
@@ -432,9 +432,9 @@ export class ReatPeerConnection extends Emitter {
     const d = ref.d;
     this.#direct = d;
     g.directConns.set(this.id, d);
-    this.#ll.info("new connection", { session: d.reatSession, reason, impolite: this.impolite });
+    this.#ll.info("new connection", { session: d.ralSession, reason, impolite: this.impolite });
     if (old) this.#directHooks.rebuilt();
-    if (this.impolite) this.#queue.push(() => d.reatNegotiate("initial"));
+    if (this.impolite) this.#queue.push(() => d.ralNegotiate("initial"));
   }
 
   #hooksFor(ref) {
@@ -474,9 +474,9 @@ export class ReatPeerConnection extends Emitter {
   }
 
   #retireDirect(d, silent = false) {
-    this.#localRetired.add(d.reatSession);
-    if (d.reatRemoteSession) this.#remoteRetired.add(d.reatRemoteSession);
-    d.reatRetire(silent);
+    this.#localRetired.add(d.ralSession);
+    if (d.ralRemoteSession) this.#remoteRetired.add(d.ralRemoteSession);
+    d.ralRetire(silent);
   }
 
   /**
@@ -501,20 +501,20 @@ export class ReatPeerConnection extends Emitter {
     if (!this.#direct) this.#newDirect("signal");
     let d = this.#direct;
     if (!d) return;
-    if (msg.s && msg.s !== d.reatRemoteSession) {
-      if (d.reatRemoteSession === null || !d.remoteDescription) {
-        if (d.reatRemoteSession) this.#remoteRetired.add(d.reatRemoteSession);
-        d.reatRemoteSession = msg.s;
+    if (msg.s && msg.s !== d.ralRemoteSession) {
+      if (d.ralRemoteSession === null || !d.remoteDescription) {
+        if (d.ralRemoteSession) this.#remoteRetired.add(d.ralRemoteSession);
+        d.ralRemoteSession = msg.s;
       } else {
-        this.#ll.warn("remote session changed, rebuilding", { old: d.reatRemoteSession, new: msg.s });
+        this.#ll.warn("remote session changed, rebuilding", { old: d.ralRemoteSession, new: msg.s });
         this.#newDirect("remote session changed");
         d = this.#direct;
         if (!d) return;
-        d.reatRemoteSession = msg.s;
+        d.ralRemoteSession = msg.s;
       }
     }
     if (msg.t === "renegotiate") await this.#onRenegotiate(d, msg);
-    else if (msg.t === "offer" || msg.t === "answer" || msg.t === "cand") await d.reatHandleSignal(msg);
+    else if (msg.t === "offer" || msg.t === "answer" || msg.t === "cand") await d.ralHandleSignal(msg);
     else this.#ll.debug("unknown signal", { t: msg.t });
   }
 
@@ -530,7 +530,7 @@ export class ReatPeerConnection extends Emitter {
       this.#iceRestartNow(d, msg.reason ?? "requested");
       return;
     }
-    await d.reatNegotiate(msg.reason ?? "requested");
+    await d.ralNegotiate(msg.reason ?? "requested");
   }
 
   #onCtlClosed() {
@@ -544,13 +544,13 @@ export class ReatPeerConnection extends Emitter {
   #evaluateDirect(reason) {
     if (this.#directClosed) return;
     const d = this.#direct;
-    if (d?.reatHealthy) {
+    if (d?.ralHealthy) {
       if (this.#recovery.running || this.#directState === "unreachable" || this.#directState === "recovering") {
         this.#recovery.noteHealthy();
         this.#recovery.resetReprobe();
       }
       this.#setDirectState("connected", reason);
-    } else if (d?.reatUsable) {
+    } else if (d?.ralUsable) {
       if (this.#directState !== "recovering" && this.#directState !== "unreachable") this.#setDirectState("slow", reason);
     }
   }
@@ -606,18 +606,18 @@ export class ReatPeerConnection extends Emitter {
   /** The impolite side restarts ICE, the polite side asks for it. */
   #restartIce(d, reason) {
     if (this.impolite) this.#iceRestartNow(d, reason);
-    else d.reatSignal({ t: "renegotiate", iceRestart: true, reason });
+    else d.ralSignal({ t: "renegotiate", iceRestart: true, reason });
   }
 
   #iceRestartNow(d, reason) {
-    if (d.reatClosed) return;
+    if (d.ralClosed) return;
     this.#lastRestartAt = this.#group.clock.now();
     this.#ll.info("ICE restart", { reason });
     if (!d.remoteDescription) {
       this.#rebuild("restart before first answer");
       return;
     }
-    this.#queue.push(() => d.reatIceRestart());
+    this.#queue.push(() => d.ralIceRestart());
   }
 
   #rebuild(reason) {
@@ -626,7 +626,7 @@ export class ReatPeerConnection extends Emitter {
     if (this.impolite) this.#newDirect(reason);
     else {
       this.#ll.info("asking for rebuild", { reason });
-      this.#direct?.reatSignal({ t: "renegotiate", rebuild: true, reason });
+      this.#direct?.ralSignal({ t: "renegotiate", rebuild: true, reason });
     }
   }
 
@@ -643,7 +643,7 @@ export class ReatPeerConnection extends Emitter {
 
   /** Re-checks liveness now and restarts ICE when the direct connection is slow or stale. */
   checkDirect(reason) {
-    if (this.#direct?.reatCheckNow()) this.directIceRestart(reason);
+    if (this.#direct?.ralCheckNow()) this.directIceRestart(reason);
   }
 
   /**
@@ -654,7 +654,7 @@ export class ReatPeerConnection extends Emitter {
   rebuildDirect(reason = "requested", silent = false) {
     if (this.#directClosed || !this.#directHooks) return;
     this.#newDirect(reason, silent);
-    if (!this.impolite) this.#direct?.reatSignal({ t: "renegotiate", rebuild: true, reason });
+    if (!this.impolite) this.#direct?.ralSignal({ t: "renegotiate", rebuild: true, reason });
   }
 
   async #dump(d, all, reason) {

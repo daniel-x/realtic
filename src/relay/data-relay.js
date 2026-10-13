@@ -41,8 +41,8 @@ export class DataRelay {
     for (const f of this.flows.values()) ends.add(f.origin).add(f.target);
     for (const id of ends) {
       const link = g.directConns.get(id);
-      if (!link || link.reatRemoteBackground) continue;
-      const silence = link.reatSilence;
+      if (!link || link.ralRemoteBackground) continue;
+      const silence = link.ralSilence;
       const level = silence >= g.config.relayPeerDownMs ? "stale" : silence >= g.config.SLOW_CONNECTION_MS ? "slow" : "ok";
       this.endChanged(id, level);
     }
@@ -72,15 +72,15 @@ export class DataRelay {
 
   /**
    * Handles `relay-request` from the origin end.
-   * @param {import("../link/direct-peer-connection.js").ReatDirectPeerConnection} link link to the origin
+   * @param {import("../link/direct-peer-connection.js").RalDirectPeerConnection} link link to the origin
    * @param {{flow: string, origin: string, target: string, role: string, kinds?: string[]}} msg
    */
   onRequest(link, msg) {
     const g = this.#group;
-    const origin = link.reatRemoteId;
+    const origin = link.ralRemoteId;
     const reject = (reason) => {
       this.l.info("relay request rejected", { flow: msg.flow, origin, target: msg.target, reason });
-      link.reatSendCtl({ t: "relay-reject", flow: msg.flow, reason });
+      link.ralSendCtl({ t: "relay-reject", flow: msg.flow, reason });
     };
     if (msg.origin !== origin) return reject("origin mismatch");
     if (!g.config.relay) return reject("relaying disabled");
@@ -88,7 +88,7 @@ export class DataRelay {
     if (!g.helloDone(msg.target) || !g.helloDone(origin)) return reject("no hello");
     if (g.config.allowRelay && !g.config.allowRelay(origin, msg.target)) return reject("not allowed");
     const next = g.directConns.get(msg.target);
-    if (!next?.reatUsable) return reject("no link to target");
+    if (!next?.ralUsable) return reject("no link to target");
     const key = DataRelay.key(origin, msg.target, msg.flow);
     if (!this.flows.has(key)) {
       if (this.flows.size >= g.config.maxRelayFlows) return reject("too many flows");
@@ -101,38 +101,38 @@ export class DataRelay {
     this.flows.set(key, flow);
     g.localIndex(next, origin);
     g.localIndex(link, msg.target);
-    next.reatSendCtl({ t: "relay-open", flow: msg.flow, origin, role: flow.role, kinds: flow.kinds });
-    link.reatSendCtl({ t: "relay-accept", flow: msg.flow });
+    next.ralSendCtl({ t: "relay-open", flow: msg.flow, origin, role: flow.role, kinds: flow.kinds });
+    link.ralSendCtl({ t: "relay-accept", flow: msg.flow });
     this.l.info(existing ? "relay flow updated" : "relay flow accepted", { flow: msg.flow, origin, target: msg.target, role: flow.role });
     g.mediaChanged();
   }
 
   /**
    * Handles `relay-close` from either end and forwards it to the other end.
-   * @param {import("../link/direct-peer-connection.js").ReatDirectPeerConnection} link
+   * @param {import("../link/direct-peer-connection.js").RalDirectPeerConnection} link
    * @param {{flow: string}} msg
    */
   onClose(link, msg) {
     for (const [key, f] of this.flows) {
-      if (f.flow !== msg.flow || (f.origin !== link.reatRemoteId && f.target !== link.reatRemoteId)) continue;
+      if (f.flow !== msg.flow || (f.origin !== link.ralRemoteId && f.target !== link.ralRemoteId)) continue;
       this.flows.delete(key);
-      const other = otherEnd(f, link.reatRemoteId);
-      this.#group.directConns.get(other)?.reatSendCtl({ t: "relay-close", flow: f.flow, origin: f.origin });
-      this.l.info("relay flow closed", { flow: f.flow, origin: f.origin, target: f.target, by: link.reatRemoteId });
+      const other = otherEnd(f, link.ralRemoteId);
+      this.#group.directConns.get(other)?.ralSendCtl({ t: "relay-close", flow: f.flow, origin: f.origin });
+      this.l.info("relay flow closed", { flow: f.flow, origin: f.origin, target: f.target, by: link.ralRemoteId });
       this.#group.mediaChanged();
     }
   }
 
   /**
    * Handles `standby-activate` from the origin end: the standby becomes active.
-   * @param {import("../link/direct-peer-connection.js").ReatDirectPeerConnection} link
+   * @param {import("../link/direct-peer-connection.js").RalDirectPeerConnection} link
    * @param {{flow: string}} msg
    */
   onActivate(link, msg) {
     for (const f of this.flows.values()) {
-      if (f.flow !== msg.flow || f.origin !== link.reatRemoteId) continue;
+      if (f.flow !== msg.flow || f.origin !== link.ralRemoteId) continue;
       f.role = "active";
-      this.#group.directConns.get(f.target)?.reatSendCtl({ t: "standby-activate", flow: f.flow, origin: f.origin });
+      this.#group.directConns.get(f.target)?.ralSendCtl({ t: "standby-activate", flow: f.flow, origin: f.origin });
       this.l.info("standby activated", { flow: f.flow, origin: f.origin, target: f.target });
       this.#group.mediaChanged();
     }
@@ -140,7 +140,7 @@ export class DataRelay {
 
   /**
    * Forwards an envelope of an accepted flow. Drops everything else.
-   * @param {import("../link/direct-peer-connection.js").ReatDirectPeerConnection} link incoming link
+   * @param {import("../link/direct-peer-connection.js").RalDirectPeerConnection} link incoming link
    * @param {string} src origin peer id
    * @param {string} dst destination peer id
    * @param {Uint8Array} bytes
@@ -149,16 +149,16 @@ export class DataRelay {
    */
   forward(link, src, dst, bytes, e, key) {
     const g = this.#group;
-    if (src !== link.reatRemoteId || !this.carries(src, dst)) {
-      this.l.debug("dropped envelope of unaccepted flow", { src, dst, via: link.reatRemoteId });
+    if (src !== link.ralRemoteId || !this.carries(src, dst)) {
+      this.l.debug("dropped envelope of unaccepted flow", { src, dst, via: link.ralRemoteId });
       return;
     }
     const next = g.directConns.get(dst);
-    if (!next?.reatUsable) return;
+    if (!next?.ralUsable) return;
     const copy = bytes.slice();
     rewriteIdx(copy, g.localIndex(next, src), 1);
     if (e.flags & FLAG.LIFETIME) {
-      const remaining = e.lifetime - (link.reatMetrics.rtt ?? 0) / 2;
+      const remaining = e.lifetime - (link.ralMetrics.rtt ?? 0) / 2;
       if (remaining <= 0) {
         this.l.debug("dropped expired envelope", { src, dst, lifetime: e.lifetime });
         return;
@@ -167,7 +167,7 @@ export class DataRelay {
     }
     this.#bytesWindow += copy.length;
     g.hooks.onForward?.(copy);
-    next.reatSendEnvelope(key, `relay:${src}>${dst}:${e.channelId}`, copy);
+    next.ralSendEnvelope(key, `relay:${src}>${dst}:${e.channelId}`, copy);
   }
 
   /**
@@ -190,7 +190,7 @@ export class DataRelay {
       const other = otherEnd(f, peerId);
       if (!other || told.has(other)) continue;
       told.add(other);
-      g.directConns.get(other)?.reatSendCtl({ t, origin: peerId, target: other });
+      g.directConns.get(other)?.ralSendCtl({ t, origin: peerId, target: other });
       this.l.info(`${t} sent`, { dead: peerId, to: other });
     }
   }
@@ -201,8 +201,8 @@ export class DataRelay {
       if (f.origin !== peerId && f.target !== peerId) continue;
       this.flows.delete(key);
       const other = otherEnd(f, peerId);
-      this.#group.directConns.get(other)?.reatSendCtl({ t: "route-down", origin: peerId, target: other });
-      this.#group.directConns.get(other)?.reatSendCtl({ t: "relay-close", flow: f.flow, origin: f.origin });
+      this.#group.directConns.get(other)?.ralSendCtl({ t: "route-down", origin: peerId, target: other });
+      this.#group.directConns.get(other)?.ralSendCtl({ t: "relay-close", flow: f.flow, origin: f.origin });
     }
   }
 

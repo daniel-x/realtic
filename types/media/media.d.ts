@@ -53,19 +53,19 @@ export class MediaManager {
     replaceSource(key: any, track: any): Promise<void>;
     /**
      * Brings a link's slots in line with the plan. Serialized per link.
-     * @param {import("../link/direct-peer-connection.js").ReatDirectPeerConnection} link
+     * @param {import("../link/direct-peer-connection.js").RalDirectPeerConnection} link
      */
-    sync(link: import("../link/direct-peer-connection.js").ReatDirectPeerConnection): void;
+    sync(link: import("../link/direct-peer-connection.js").RalDirectPeerConnection): void;
     /** Senders of a link, for bandwidth control. */
     senders(linkId: any): any;
     /** Forgets a link's sending and receiving state (rebuild or close). */
     resetLink(linkId: any): void;
     /**
      * Handles `mid-map` from a neighbor.
-     * @param {import("../link/direct-peer-connection.js").ReatDirectPeerConnection} link
+     * @param {import("../link/direct-peer-connection.js").RalDirectPeerConnection} link
      * @param {{mids: Record<string, {origin: string, pub: string, tag: string, kind: string}>}} msg
      */
-    onMidMap(link: import("../link/direct-peer-connection.js").ReatDirectPeerConnection, msg: {
+    onMidMap(link: import("../link/direct-peer-connection.js").RalDirectPeerConnection, msg: {
         mids: Record<string, {
             origin: string;
             pub: string;

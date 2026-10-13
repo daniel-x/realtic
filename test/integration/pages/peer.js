@@ -1,5 +1,5 @@
 // Test page controller: the Node test drives one peer per page through `window.t`.
-import { ReatPeerGroup, attachMedia } from "../../../src/index.js";
+import { RalPeerGroup, attachMedia } from "../../../src/index.js";
 
 const BITS = 16;
 const BLOCK = 20;
@@ -32,7 +32,7 @@ t.start = ({ id, signaling: signalingOptions, groupName = "test", config = {}, i
   const cfg = { ...config, testHooks };
   if (config.relayDenyAll) cfg.allowRelay = () => false;
   for (const k of ["probeIceServers", "protocol", "caps", "relayDenyAll"]) delete cfg[k];
-  const group = new ReatPeerGroup({ selfId: id, signaling: { ...signalingOptions, group: groupName }, iceServers, config: cfg, autoPeers });
+  const group = new RalPeerGroup({ selfId: id, signaling: { ...signalingOptions, group: groupName }, iceServers, config: cfg, autoPeers });
   t.group = group;
   group.on("connection", (peer) => wirePeer(peer));
   group.on("peerleft", (peer, reason) => ev("peerleft", { peer: peer.id, reason }));
@@ -77,7 +77,7 @@ t.linkInfo = (id) => {
   const c = t.group.connections.get(id);
   if (!c?.directStarted) return null;
   const d = c.direct;
-  return { state: c.directState, liveness: d?.reatLiveness, session: d?.reatSession, metrics: d?.reatMetrics, lastError: c.directError, hint: c.directHint };
+  return { state: c.directState, liveness: d?.ralLiveness, session: d?.ralSession, metrics: d?.ralMetrics, lastError: c.directError, hint: c.directHint };
 };
 
 t.createChannel = (peerId, label, init) => {
@@ -280,19 +280,19 @@ t.leave = () => t.group.leave();
 t.close = () => t.group.close();
 t.hook = {
   rebuild: (peerId) => t.group.connections.get(peerId)?.rebuildDirect("test hook", true),
-  abortTransport: (peerId) => t.group.directConns.get(peerId)?.reatAbortTransport(),
+  abortTransport: (peerId) => t.group.directConns.get(peerId)?.ralAbortTransport(),
   busy: (ms) => {
     const end = performance.now() + ms;
     while (performance.now() < end);
   },
   captureForwarded: () => (t.forwarded = []),
-  transports: (peerId) => t.group.directConns.get(peerId)?.reatTransports ?? [],
-  sendCtl: (peerId, msg) => t.group.directConns.get(peerId)?.reatSendCtl(msg),
+  transports: (peerId) => t.group.directConns.get(peerId)?.ralTransports ?? [],
+  sendCtl: (peerId, msg) => t.group.directConns.get(peerId)?.ralSendCtl(msg),
   rawEnvelope: async (via, target) => {
     const { encode } = await import("../../../src/transport/framing.js");
     const link = t.group.directConns.get(via);
     const dstIdx = t.group.localIndex(link, target);
-    link.reatSendEnvelope("rel", "raw", encode({ version: 1, type: 0, flags: 1, srcIdx: 0, dstIdx, channelId: 9, seq: 1, payload: new Uint8Array(40) }));
+    link.ralSendEnvelope("rel", "raw", encode({ version: 1, type: 0, flags: 1, srcIdx: 0, dstIdx, channelId: 9, seq: 1, payload: new Uint8Array(40) }));
   },
   visibility: (hidden) => {
     Object.defineProperty(document, "visibilityState", { value: hidden ? "hidden" : "visible", configurable: true });

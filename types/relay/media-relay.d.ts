@@ -20,10 +20,10 @@ export class MediaRelay {
     subscription(subscriber: any, origin: any): any;
     /**
      * Handles `subscription` from a neighbor: stores it and, on a relay, forwards it to the origin.
-     * @param {import("../link/direct-peer-connection.js").ReatDirectPeerConnection} link
+     * @param {import("../link/direct-peer-connection.js").RalDirectPeerConnection} link
      * @param {{origin: string, for?: string, audio: boolean, video: boolean, tags: string[]|null}} msg
      */
-    onSubscription(link: import("../link/direct-peer-connection.js").ReatDirectPeerConnection, msg: {
+    onSubscription(link: import("../link/direct-peer-connection.js").RalDirectPeerConnection, msg: {
         origin: string;
         for?: string;
         audio: boolean;
@@ -36,9 +36,9 @@ export class MediaRelay {
     resendSubscriptions(link: any): void;
     /**
      * Sources link `link` must carry: `[{key, info, track, active, params}]`.
-     * @param {import("../link/direct-peer-connection.js").ReatDirectPeerConnection} link
+     * @param {import("../link/direct-peer-connection.js").RalDirectPeerConnection} link
      */
-    plan(link: import("../link/direct-peer-connection.js").ReatDirectPeerConnection): {
+    plan(link: import("../link/direct-peer-connection.js").RalDirectPeerConnection): {
         key: string;
         info: any;
         track: any;

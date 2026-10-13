@@ -1,5 +1,5 @@
 /**
- * @typedef {object} DirectHooks callbacks of the owning ReatPeerConnection
+ * @typedef {object} DirectHooks callbacks of the owning RalPeerConnection
  * @property {(msg: object) => void} signal sends a signaling message (session ids added)
  * @property {(task: () => Promise<void>) => void} enqueue runs a negotiation task in order
  * @property {() => void} open `ctl` opened
@@ -17,15 +17,15 @@
  * @property {() => void} watchdog `ctl` did not open in time after ICE connected
  * @property {() => void} connectTimeout `ctl` did not open within `connectTimeoutMs`
  */
-/** @typedef {InstanceType<ReturnType<typeof defineClass>>} ReatDirectPeerConnection */
+/** @typedef {InstanceType<ReturnType<typeof defineClass>>} RalDirectPeerConnection */
 /**
- * The ReatDirectPeerConnection class on top of `Base`, the browser's RTCPeerConnection or an
+ * The RalDirectPeerConnection class on top of `Base`, the browser's RTCPeerConnection or an
  * injected subclass of it. Classes are cached per base.
  * @param {typeof RTCPeerConnection} Base
  */
 export function directPeerConnectionClass(Base: typeof RTCPeerConnection): any;
 /**
- * callbacks of the owning ReatPeerConnection
+ * callbacks of the owning RalPeerConnection
  */
 export type DirectHooks = {
     /**
@@ -87,7 +87,7 @@ export type DirectHooks = {
      */
     connectTimeout: () => void;
 };
-export type ReatDirectPeerConnection = InstanceType<ReturnType<typeof defineClass>>;
+export type RalDirectPeerConnection = InstanceType<ReturnType<typeof defineClass>>;
 /** @param {typeof RTCPeerConnection} Base */
 declare function defineClass(Base: typeof RTCPeerConnection): {
     new (rtcConfig: RTCConfiguration, { connection, remoteId, impolite, config, clock, log, hooks }: {
@@ -208,34 +208,34 @@ declare function defineClass(Base: typeof RTCPeerConnection): {
         /** @type {Set<Function>} */
         "__#private@#stableWaiters": Set<Function>;
         /** Session id of this connection. */
-        reatSession: string;
+        ralSession: string;
         /** Session id of the remote side's connection, once known. */
-        reatRemoteSession: any;
-        /** The ReatPeerConnection this connection belongs to. */
-        reatConnection: any;
-        reatRemoteId: string;
-        reatImpolite: boolean;
+        ralRemoteSession: any;
+        /** The RalPeerConnection this connection belongs to. */
+        ralConnection: any;
+        ralRemoteId: string;
+        ralImpolite: boolean;
         onicecandidate: (e: any) => void;
         onnegotiationneeded: () => void;
         oniceconnectionstatechange: () => void;
         onconnectionstatechange: () => void;
         ontrack: () => void;
-        /** True after reatRetire(). */
-        get reatClosed(): boolean;
+        /** True after ralRetire(). */
+        get ralClosed(): boolean;
         /** True when `ctl` is open. */
-        get reatCtlOpen(): boolean;
+        get ralCtlOpen(): boolean;
         /** True when `ctl` is open and data arrives in time. */
-        get reatHealthy(): boolean;
+        get ralHealthy(): boolean;
         /** True when the connection can carry traffic now (healthy or slow). */
-        get reatUsable(): boolean;
+        get ralUsable(): boolean;
         /** Milliseconds since data or media last arrived (consent too in background mode). */
-        get reatSilence(): number;
+        get ralSilence(): number;
         /** Liveness verdict: `ok`, `slow` or `stale`. */
-        get reatLiveness(): string;
+        get ralLiveness(): string;
         /** True while the remote side announced background mode. */
-        get reatRemoteBackground(): boolean;
+        get ralRemoteBackground(): boolean;
         /** Latest metrics (plan section 7.1). */
-        get reatMetrics(): {
+        get ralMetrics(): {
             state: string;
             rtt: any;
             bitrate: any;
@@ -244,11 +244,11 @@ declare function defineClass(Base: typeof RTCPeerConnection): {
             remoteCandidateType: any;
         };
         /** True when the selected pair runs over TURN on either side. */
-        get reatViaTurn(): boolean;
+        get ralViaTurn(): boolean;
         /** SCTP maximum message size. */
-        get reatMaxMessageSize(): number;
+        get ralMaxMessageSize(): number;
         /** Transport channels, for diagnostics. */
-        get reatTransports(): {
+        get ralTransports(): {
             key: any;
             id: any;
             ordered: any;
@@ -257,52 +257,52 @@ declare function defineClass(Base: typeof RTCPeerConnection): {
             readyState: any;
         }[];
         /** Total bufferedAmount over the transport channels. */
-        get reatBufferedAmount(): number;
+        get ralBufferedAmount(): number;
         /**
          * Sends a signaling message to the neighbor, tagged with both session ids.
          * @param {object} msg
          */
-        reatSignal(msg: object): void;
+        ralSignal(msg: object): void;
         /**
          * Applies an `offer`, `answer` or `cand` message.
          * @param {object} msg
          */
-        reatHandleSignal(msg: object): Promise<void>;
+        ralHandleSignal(msg: object): Promise<void>;
         /** Runs a negotiation round (impolite: offer; polite: `renegotiate`). */
-        reatNegotiate(reason: any): Promise<void>;
+        ralNegotiate(reason: any): Promise<void>;
         /** Restarts ICE now, rolling back an unanswered offer first. */
-        reatIceRestart(): Promise<void>;
+        ralIceRestart(): Promise<void>;
         /**
          * Sends a control message on `ctl`.
          * @param {object} msg
          */
-        reatSendCtl(msg: object): boolean;
+        ralSendCtl(msg: object): boolean;
         /**
          * Queues an envelope on a transport channel.
          * @param {string} key
          * @param {string} flow
          * @param {Uint8Array} bytes
          */
-        reatSendEnvelope(key: string, flow: string, bytes: Uint8Array): boolean;
+        ralSendEnvelope(key: string, flow: string, bytes: Uint8Array): boolean;
         /** Bytes queued for a flow on a transport channel. */
-        reatQueuedBytes(key: any, flow: any): any;
+        ralQueuedBytes(key: any, flow: any): any;
         /** Sends `bg` or `fg` (plan section 6.1). */
-        reatSetBackground(on: any): void;
+        ralSetBackground(on: any): void;
         /** Beats and re-checks liveness now. Returns true when the connection is slow or stale. */
-        reatCheckNow(): boolean;
+        ralCheckNow(): boolean;
         /**
          * Records a round trip sample measured with the periodic `link-state` echo. It refreshes every
          * link-state period, while the candidate pair RTT refreshes only with consent checks.
          * @param {number} ms
          */
-        reatNoteControlRtt(ms: number): void;
+        ralNoteControlRtt(ms: number): void;
         /** Test hook: closes all transport channels, like an SCTP abort. */
-        reatAbortTransport(): void;
+        ralAbortTransport(): void;
         /**
          * Ends this connection. With `silent`, closing waits 30 s, so the remote side learns of a
          * rebuild only from the new session id (test hook for doc §3.6).
          */
-        reatRetire(silent?: boolean): void;
+        ralRetire(silent?: boolean): void;
         "__#private@#onStable"(): void;
         "__#private@#onIceState"(): void;
         "__#private@#onConnState"(): void;
@@ -328,7 +328,7 @@ declare function defineClass(Base: typeof RTCPeerConnection): {
          * @param {string} key
          * @returns {Promise<{tr: RTCRtpTransceiver, kind: string, key: string|null}>}
          */
-        reatAcquireSendSlot(kind: "audio" | "video", key: string): Promise<{
+        ralAcquireSendSlot(kind: "audio" | "video", key: string): Promise<{
             tr: RTCRtpTransceiver;
             kind: string;
             key: string | null;
@@ -337,17 +337,17 @@ declare function defineClass(Base: typeof RTCPeerConnection): {
          * Marks a slot idle and stops sending on it. No renegotiation.
          * @param {{tr: RTCRtpTransceiver, key: string|null}} slot
          */
-        reatReleaseSendSlot(slot: {
+        ralReleaseSendSlot(slot: {
             tr: RTCRtpTransceiver;
             key: string | null;
         }): void;
         /** True when the slot belongs to this connection and it is not retired. */
-        reatOwnsSlot(slot: any): boolean;
+        ralOwnsSlot(slot: any): boolean;
         /**
          * The receiving transceiver with `mid`.
          * @param {string} mid
          */
-        reatTransceiver(mid: string): RTCRtpTransceiver;
+        ralTransceiver(mid: string): RTCRtpTransceiver;
         "__#private@#waitStable"(cond: any): Promise<any>;
         "__#private@#onSlotRequest"(msg: any): void;
         "__#private@#offerExtras"(): {

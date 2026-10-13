@@ -1,6 +1,6 @@
-export { ReatPeerGroup } from "./peer-group.js";
-export { ReatPeerConnection } from "./peer-connection.js";
-export { ReatChannel } from "./channel/channel.js";
+export { RalPeerGroup } from "./peer-group.js";
+export { RalPeerConnection } from "./peer-connection.js";
+export { RalChannel } from "./channel/channel.js";
 export { Publication } from "./media/media.js";
 export { MemoryHub } from "./signaling/adapter.js";
 export { WebSocketSignaling } from "./signaling/websocket.js";
