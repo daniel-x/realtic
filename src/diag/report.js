@@ -44,7 +44,7 @@ export async function diagnosticReport(group) {
     config: plainConfig(group.config),
     iceServers: iceServersWithoutCredentials(group.iceServers),
     peers: [...group.connections.values()].map((p) => ({ id: p.id, state: p.state, reason: p.reason, route: p.route, lastError: p.lastError, hint: p.hint })),
-    links: [...group.connections.values()].filter((c) => c.directStarted).map((c) => ({ peer: c.id, state: c.directState, reason: c.directReason, session: c.direct?.ralSession, liveness: c.direct?.ralLiveness, metrics: c.direct?.ralMetrics, lastError: c.directError, hint: c.directHint, lastDump: c.lastDump })),
+    links: [...group.connections.values()].filter((c) => c.directStarted).map((c) => ({ peer: c.id, state: c.directState, reason: c.directReason, session: c.directConn?.ralSession, liveness: c.directConn?.ralLiveness, metrics: c.directConn?.ralMetrics, lastError: c.directError, hint: c.directHint, lastDump: c.lastDump })),
     routing: group.getStats(),
     media: group.media.streams.list(),
     stats,

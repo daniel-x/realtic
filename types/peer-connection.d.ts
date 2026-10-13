@@ -45,9 +45,7 @@ export class RalPeerConnection extends Emitter {
      * The current RalDirectPeerConnection to this peer (an RTCPeerConnection), or null without one.
      * A rebuild replaces it.
      */
-    get direct(): any;
-    /** The current RTCPeerConnection to this peer, or null without one; for advanced use. */
-    get rtcPeerConnection(): any;
+    get directConn(): any;
     /** End to end liveness monitor of relayed routes. */
     get e2e(): LivenessMonitor;
     /**

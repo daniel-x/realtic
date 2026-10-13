@@ -33,7 +33,7 @@ export class RalPeerGroup extends Emitter {
     connections: Map<string, RalPeerConnection>;
     /**
      * The current RalDirectPeerConnection of each connection that has one, i.e. every existing
-     * RTCPeerConnection. Each is owned by its RalPeerConnection (`connection.direct`), which
+     * RTCPeerConnection. Each is owned by its RalPeerConnection (`connection.directConn`), which
      * replaces the entry on a rebuild.
      * @type {Map<string, import("./link/direct-peer-connection.js").RalDirectPeerConnection>}
      */

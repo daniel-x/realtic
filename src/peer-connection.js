@@ -39,7 +39,7 @@ export class RalPeerConnection extends Emitter {
   #beatTimer = null;
   #ll;
   /** @type {any} */
-  #direct = null;
+  #directConn = null;
   #directHooks = null;
   #directState = "connecting";
   #directReason = "";
@@ -103,7 +103,7 @@ export class RalPeerConnection extends Emitter {
     const r = this.#route;
     if (!r) return null;
     if (r.kind === "direct") {
-      const d = this.#direct;
+      const d = this.#directConn;
       return { kind: "direct", via: null, candidateType: d?.ralViaTurn ? "relay" : d?.ralMetrics.candidateType ?? "host" };
     }
     return { kind: "relay", via: r.via, candidateType: this.#group.directConns.get(r.via)?.ralMetrics.candidateType ?? "host" };
@@ -118,13 +118,8 @@ export class RalPeerConnection extends Emitter {
    * The current RalDirectPeerConnection to this peer (an RTCPeerConnection), or null without one.
    * A rebuild replaces it.
    */
-  get direct() {
-    return this.#direct;
-  }
-
-  /** The current RTCPeerConnection to this peer, or null without one; for advanced use. */
-  get rtcPeerConnection() {
-    return this.#direct;
+  get directConn() {
+    return this.#directConn;
   }
 
   /** End to end liveness monitor of relayed routes. */
@@ -278,7 +273,7 @@ export class RalPeerConnection extends Emitter {
   }
 
   #sendOn(route, e, key) {
-    const link = route.kind === "direct" ? this.#direct : this.#group.directConns.get(route.via);
+    const link = route.kind === "direct" ? this.#directConn : this.#group.directConns.get(route.via);
     if (!link || !link.ralUsable) return false;
     const encrypted = route.kind === "relay";
     if (encrypted && !this.pairKey) return false;
@@ -395,7 +390,7 @@ export class RalPeerConnection extends Emitter {
       rebuildAttempts: c.rebuildAttempts,
       stepTimeoutMs: c.recoveryStepTimeoutMs,
       reprobeMs: c.reprobeIntervalsMs,
-      healthy: () => !!this.#direct?.ralHealthy,
+      healthy: () => !!this.#directConn?.ralHealthy,
       act: (step) => this.#recoveryStep(step),
       canAddTurn: () => !this.#turnAdded && g.routing.canAddTurn(this.id),
       onreprobe: () => this.#ll.info("background re-probe"),
@@ -405,7 +400,7 @@ export class RalPeerConnection extends Emitter {
 
   #newDirect(reason, silent = false) {
     const g = this.#group;
-    const old = this.#direct;
+    const old = this.#directConn;
     if (old) {
       this.#retireDirect(old, silent);
       this.#lastRebuildAt = g.clock.now();
@@ -424,13 +419,13 @@ export class RalPeerConnection extends Emitter {
       });
     } catch (error) {
       this.#noteDirectError("RTCPeerConnection", error);
-      this.#direct = null;
+      this.#directConn = null;
       g.directConns.delete(this.id);
       this.#setDirectState("unreachable", `cannot create RTCPeerConnection: ${error.message}`);
       return;
     }
     const d = ref.d;
-    this.#direct = d;
+    this.#directConn = d;
     g.directConns.set(this.id, d);
     this.#ll.info("new connection", { session: d.ralSession, reason, impolite: this.impolite });
     if (old) this.#directHooks.rebuilt();
@@ -498,8 +493,8 @@ export class RalPeerConnection extends Emitter {
       this.#ll.debug("dropped signal from retired session", { t: msg.t, s: msg.s });
       return;
     }
-    if (!this.#direct) this.#newDirect("signal");
-    let d = this.#direct;
+    if (!this.#directConn) this.#newDirect("signal");
+    let d = this.#directConn;
     if (!d) return;
     if (msg.s && msg.s !== d.ralRemoteSession) {
       if (d.ralRemoteSession === null || !d.remoteDescription) {
@@ -508,7 +503,7 @@ export class RalPeerConnection extends Emitter {
       } else {
         this.#ll.warn("remote session changed, rebuilding", { old: d.ralRemoteSession, new: msg.s });
         this.#newDirect("remote session changed");
-        d = this.#direct;
+        d = this.#directConn;
         if (!d) return;
         d.ralRemoteSession = msg.s;
       }
@@ -543,7 +538,7 @@ export class RalPeerConnection extends Emitter {
 
   #evaluateDirect(reason) {
     if (this.#directClosed) return;
-    const d = this.#direct;
+    const d = this.#directConn;
     if (d?.ralHealthy) {
       if (this.#recovery.running || this.#directState === "unreachable" || this.#directState === "recovering") {
         this.#recovery.noteHealthy();
@@ -573,7 +568,7 @@ export class RalPeerConnection extends Emitter {
     if (this.#directClosed) return;
     this.directError = reason;
     if (this.#directState !== "unreachable") this.#setDirectState("recovering", reason);
-    if (this.#direct) this.#dump(this.#direct, true, reason);
+    if (this.#directConn) this.#dump(this.#directConn, true, reason);
     if (this.#recovery.running) return;
     this.#recovery.run().then((result) => {
       if (result === "unreachable" && !this.#directClosed) this.#setDirectState("unreachable", this.directError ?? reason);
@@ -583,7 +578,7 @@ export class RalPeerConnection extends Emitter {
   #recoveryStep(step) {
     if (this.#directClosed) return;
     this.#ll.info(`recovery step ${step.kind}`, { attempt: step.attempt });
-    const d = this.#direct;
+    const d = this.#directConn;
     if (step.kind === "rebuild") {
       this.#rebuild("recovery");
       return;
@@ -626,7 +621,7 @@ export class RalPeerConnection extends Emitter {
     if (this.impolite) this.#newDirect(reason);
     else {
       this.#ll.info("asking for rebuild", { reason });
-      this.#direct?.ralSignal({ t: "renegotiate", rebuild: true, reason });
+      this.#directConn?.ralSignal({ t: "renegotiate", rebuild: true, reason });
     }
   }
 
@@ -636,14 +631,14 @@ export class RalPeerConnection extends Emitter {
    * @param {string} reason
    */
   directIceRestart(reason) {
-    const d = this.#direct;
+    const d = this.#directConn;
     if (!d || this.#directClosed) return;
     this.#restartIce(d, reason);
   }
 
   /** Re-checks liveness now and restarts ICE when the direct connection is slow or stale. */
   checkDirect(reason) {
-    if (this.#direct?.ralCheckNow()) this.directIceRestart(reason);
+    if (this.#directConn?.ralCheckNow()) this.directIceRestart(reason);
   }
 
   /**
@@ -654,7 +649,7 @@ export class RalPeerConnection extends Emitter {
   rebuildDirect(reason = "requested", silent = false) {
     if (this.#directClosed || !this.#directHooks) return;
     this.#newDirect(reason, silent);
-    if (!this.impolite) this.#direct?.ralSignal({ t: "renegotiate", rebuild: true, reason });
+    if (!this.impolite) this.#directConn?.ralSignal({ t: "renegotiate", rebuild: true, reason });
   }
 
   async #dump(d, all, reason) {
@@ -689,8 +684,8 @@ export class RalPeerConnection extends Emitter {
     if (!this.#directHooks) return;
     this.#setDirectState("closed", reason);
     this.#recovery.cancel();
-    const d = this.#direct;
-    this.#direct = null;
+    const d = this.#directConn;
+    this.#directConn = null;
     if (this.#group.directConns.get(this.id) === d) this.#group.directConns.delete(this.id);
     if (d) this.#retireDirect(d);
   }

@@ -716,7 +716,7 @@ export class Routing {
     const g = this.#group;
     const links = {};
     for (const [id, c] of g.connections) {
-      const d = c.direct;
+      const d = c.directConn;
       if (c.directStarted) links[id] = { state: c.directState, liveness: d?.ralLiveness, session: d?.ralSession, metrics: d?.ralMetrics, bufferedAmount: d?.ralBufferedAmount ?? 0 };
     }
     const peers = {};

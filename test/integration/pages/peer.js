@@ -76,7 +76,7 @@ t.peerInfo = (id) => {
 t.linkInfo = (id) => {
   const c = t.group.connections.get(id);
   if (!c?.directStarted) return null;
-  const d = c.direct;
+  const d = c.directConn;
   return { state: c.directState, liveness: d?.ralLiveness, session: d?.ralSession, metrics: d?.ralMetrics, lastError: c.directError, hint: c.directHint };
 };
 
