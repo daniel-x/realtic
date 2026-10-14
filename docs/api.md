@@ -13,8 +13,15 @@ const group = new RalPeerGroup({
   iceServers,      // passed to RTCPeerConnection (TURN handling: config.turnMode)
   config,          // overrides of DEFAULTS (src/config.js)
   autoPeers,       // add peers from the adapter's presence events and incoming hello
+  RTCPeerConnection, // optional, the class to use instead of globalThis.RTCPeerConnection
+  clock,           // optional, timers and time source; default real time, RalFakeClock for tests
 });
 ```
+
+`RTCPeerConnection` must be a class: each direct connection is an instance of a subclass of it
+(`RalDirectPeerConnection`), and the network change probe creates throwaway instances of it. Use
+it for a wrapper that instruments calls, or for an implementation outside the browser. Without
+it and without `globalThis.RTCPeerConnection`, peers cannot connect.
 
 | Member | Description |
 | ------ | ----------- |
