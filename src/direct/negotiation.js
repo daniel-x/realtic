@@ -7,6 +7,9 @@
  * - Perfect negotiation collision handling stays as a safety net: the impolite side ignores a
  *   colliding offer, the polite side rolls back implicitly.
  * - Candidates that arrive before the remote description are held and applied after it.
+ * - Offers are numbered (`o`) and the answer echoes the number. An answer to an offer that was
+ *   rolled back for an ICE restart is dropped: applied to the newer offer, it would leave stale
+ *   ICE credentials of the remote side in place.
  *
  * All `handle*` calls must come through the direct connection's serial queue (doc §2.2).
  */
@@ -15,6 +18,7 @@ export class Negotiator {
   offerPending = false;
   ignoreOffer = false;
   #heldCandidates = [];
+  #offerNumber = 0;
 
   /**
    * @param {RTCPeerConnection} pc
@@ -55,14 +59,14 @@ export class Negotiator {
     try {
       await this.pc.setLocalDescription();
       if (this.pc.signalingState === "have-local-offer") {
-        this.signal({ t: "offer", sdp: this.pc.localDescription.sdp, reason, ...this.offerExtras?.() });
+        this.signal({ t: "offer", sdp: this.pc.localDescription.sdp, o: ++this.#offerNumber, reason, ...this.offerExtras?.() });
       }
     } finally {
       this.makingOffer = false;
     }
   }
 
-  /** @param {{sdp: string}} msg */
+  /** @param {{sdp: string, o?: number}} msg */
   async handleOffer(msg) {
     const collision = this.makingOffer || this.pc.signalingState !== "stable";
     this.ignoreOffer = this.impolite && collision;
@@ -74,14 +78,18 @@ export class Negotiator {
     await this.#applyHeld();
     await this.beforeAnswer?.(msg);
     await this.pc.setLocalDescription();
-    this.signal({ t: "answer", sdp: this.pc.localDescription.sdp });
+    this.signal({ t: "answer", sdp: this.pc.localDescription.sdp, o: msg.o });
     this.onstable?.();
   }
 
-  /** @param {{sdp: string}} msg */
+  /** @param {{sdp: string, o?: number}} msg */
   async handleAnswer(msg) {
     if (this.pc.signalingState !== "have-local-offer") {
       this.log("dropped answer in state " + this.pc.signalingState);
+      return;
+    }
+    if (msg.o !== undefined && msg.o !== this.#offerNumber) {
+      this.log("dropped answer to an older offer", { o: msg.o, current: this.#offerNumber });
       return;
     }
     await this.pc.setRemoteDescription({ type: "answer", sdp: msg.sdp });

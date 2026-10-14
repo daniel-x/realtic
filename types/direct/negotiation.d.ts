@@ -7,6 +7,9 @@
  * - Perfect negotiation collision handling stays as a safety net: the impolite side ignores a
  *   colliding offer, the polite side rolls back implicitly.
  * - Candidates that arrive before the remote description are held and applied after it.
+ * - Offers are numbered (`o`) and the answer echoes the number. An answer to an offer that was
+ *   rolled back for an ICE restart is dropped: applied to the newer offer, it would leave stale
+ *   ICE credentials of the remote side in place.
  *
  * All `handle*` calls must come through the direct connection's serial queue (doc §2.2).
  */
@@ -44,13 +47,15 @@ export class Negotiator {
     log: (msg: string, data?: object) => void;
     /** Starts an offer (impolite) or asks for one (polite). */
     negotiate(reason?: string, extra?: {}): Promise<void>;
-    /** @param {{sdp: string}} msg */
+    /** @param {{sdp: string, o?: number}} msg */
     handleOffer(msg: {
         sdp: string;
+        o?: number;
     }): Promise<void>;
-    /** @param {{sdp: string}} msg */
+    /** @param {{sdp: string, o?: number}} msg */
     handleAnswer(msg: {
         sdp: string;
+        o?: number;
     }): Promise<void>;
     /** @param {{c: RTCIceCandidateInit[]}} msg */
     handleCandidates(msg: {

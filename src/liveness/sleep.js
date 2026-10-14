@@ -56,9 +56,10 @@ export class SleepWatcher {
 /**
  * What a direct connection does after a sleep of `sleepMs`:
  *
- * - `"check"`: heartbeat and liveness check now. For short sleeps, after which the other side has
- *   not judged this one stale, and when nothing shows that the device was suspended: a timer
- *   that a hidden tab throttled fires late too, while data keeps arriving.
+ * - `"check"`: heartbeat now, and an ICE restart one `SLOW_CONNECTION_MS` later if the direct
+ *   connection is still slow or stale. For short sleeps, after which the other side has not
+ *   judged this one stale, and when nothing shows that the device was suspended: a timer that a
+ *   hidden tab throttled fires late too, while data keeps arriving.
  * - `"restart"`: ICE restart now, from the stale threshold on. The other side has started its
  *   recovery; waiting for the own stale verdict only costs time.
  * - `"rebuild"`: a new RTCPeerConnection now, from `sleepRebuildMs` on (ICE consent expired, the

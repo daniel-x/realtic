@@ -38,6 +38,30 @@ async function waitRoute(s, p, q, kind, via, timeoutMs = 30000) {
   }, timeoutMs, `${s.id(p)} routes to ${s.id(q)} via ${kind} ${viaId ?? ""}`);
 }
 
+/** A TURN server on a random port shared by UDP and TCP; retries when the port is taken. */
+async function startTurnServer() {
+  for (let attempt = 0; ; attempt++) {
+    const turn = createTurnServer({ allowLoopback: true, auth: { mechanism: "long-term", realm: "realtic.test", credentials: { test: "secret" } }, relay: { ip: "127.0.0.1", externalIp: "127.0.0.1" } });
+    const turnPort = 30000 + Math.floor(Math.random() * 20000);
+    try {
+      await new Promise((resolve, reject) => {
+        const up = new Set();
+        turn.on("listening", (info) => up.add(info.transport).size === 2 && resolve());
+        turn.on("error", reject);
+        try {
+          turn.listen({ port: turnPort, address: "127.0.0.1" });
+        } catch (error) {
+          reject(error);
+        }
+      });
+      return { turn, turnPort };
+    } catch (error) {
+      await Promise.race([new Promise((resolve) => turn.stop(resolve)), sleep(2000)]);
+      if (error?.code !== "EADDRINUSE" || attempt >= 4) throw error;
+    }
+  }
+}
+
 /** Polls `count()` until it reaches `target` or stops growing for `quietMs`, at most `timeoutMs`. */
 async function untilSettled(count, target, quietMs, timeoutMs) {
   const end = performance.now() + timeoutMs;
@@ -357,12 +381,7 @@ for (const pairing of pairings()) {
       });
 
       test("REL-13 TURN: used when no peer route exists, replaced by a peer relay", async () => {
-        const turn = createTurnServer({ allowLoopback: true, auth: { mechanism: "long-term", realm: "realtic.test", credentials: { test: "secret" } }, relay: { ip: "127.0.0.1", externalIp: "127.0.0.1" } });
-        const turnPort = 30000 + Math.floor(Math.random() * 20000);
-        await new Promise((resolve) => {
-          turn.on("listening", (info) => info.transport === "udp" && resolve());
-          turn.listen({ port: turnPort, address: "127.0.0.1" });
-        });
+        const { turn, turnPort } = await startTurnServer();
         try {
           const iceServers = [{ urls: `turn:127.0.0.1:${turnPort}?transport=udp`, username: "test", credential: "secret" }];
           const turnSooner = FAST_TIMINGS ? { iceRestartBackoffMs: [100], rebuildAttempts: 0 } : {};

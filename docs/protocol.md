@@ -24,11 +24,13 @@ Types:
 
 - `hello { ack, proto: { major, minor, features }, key, caps, relay, mediaRelay, media }`: `key` is the
   ECDH P-256 public key as JWK, `caps` the codec lists, decode probes and feature flags. Sent when
-  the app adds the peer and repeated every 3 s until the remote `hello` arrives; a `hello` without
-  `ack` is answered with `ack: true`. Always sent through the server.
-- `offer { sdp, reason, grants? }`: only the impolite side (greater peer id) sends offers.
-  `grants: [{ req, mid }]` assigns transceivers to the polite side's `slot-request`s.
-- `answer { sdp }`.
+  the app adds the peer and repeated every `helloRetryMs` (3 s) until the remote `hello` arrives;
+  a `hello` without `ack` is answered with `ack: true`. Always sent through the server.
+- `offer { sdp, o, reason, grants? }`: only the impolite side (greater peer id) sends offers.
+  `o` numbers the offers of one connection. `grants: [{ req, mid }]` assigns transceivers to the
+  polite side's `slot-request`s.
+- `answer { sdp, o }`: `o` of the offer it answers. The impolite side drops an answer whose `o` is
+  not its current offer's, e.g. the late answer to an offer it rolled back for an ICE restart.
 - `cand { c: [RTCIceCandidateInit] }`: a batch collected for 50 ms, deduplicated.
 - `renegotiate { reason, iceRestart?, rebuild? }`: the polite side asks for an offer, an ICE
   restart, or a new connection.

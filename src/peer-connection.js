@@ -650,7 +650,20 @@ export class RalPeerConnection extends Emitter {
     this.#ll.info("sleep reaction", { reaction, sleepMs: Math.round(sleepMs) });
     if (reaction === "rebuild") this.rebuildDirect(reason);
     else if (reaction === "restart") this.directIceRestart(reason);
-    else this.checkDirect(reason);
+    else this.#checkAfterSleep(reason);
+  }
+
+  /**
+   * Beats now and restarts ICE only when the direct connection is still slow or stale one
+   * `SLOW_CONNECTION_MS` later. Right after a freeze, data that arrived during it is not delivered
+   * yet, so a check at once sees the freeze as silence and restarts ICE on a working connection.
+   */
+  #checkAfterSleep(reason) {
+    const d = this.#directConn;
+    d?.ralCheckNow();
+    this.#group.clock.setTimeout(() => {
+      if (this.#directConn === d && !this.#directClosed) this.checkDirect(reason);
+    }, this.#group.config.SLOW_CONNECTION_MS);
   }
 
   /** Re-checks liveness now and restarts ICE when the direct connection is slow or stale. */

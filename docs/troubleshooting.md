@@ -59,12 +59,12 @@ working connections. The default of 5 s survives a WiFi to LTE handover.
 Browsers have no event for a resume from system sleep. A timer every `sleepCheckIntervalMs`
 detects it: a tick that comes `sleepMinMs` (2 s) or more late is a sleep; less can be load on the
 main thread. Its length is the larger of the monotonic and the wall-clock delta between two ticks
-(the monotonic clock pauses during sleep on Linux and macOS, not on Windows). The log shows `resumed after sleep` with
-`sleepMs`, and each connection logs its `sleep reaction`:
+(the monotonic clock pauses during sleep on Linux and macOS, not on Windows). The log shows
+`resumed after sleep` with `sleepMs`, and each connection logs its `sleep reaction`:
 
 | Sleep | Reaction |
 | ----- | -------- |
-| below `STALE_CONNECTION_MS` | heartbeat and liveness check now; the other side has not noticed |
+| below `STALE_CONNECTION_MS` | heartbeat now; ICE restart only if still slow `SLOW_CONNECTION_MS` later |
 | up to `sleepRebuildMs` (30 s) | ICE restart now; signaling reconnects, the network probe runs |
 | `sleepRebuildMs` or more | rebuild now: ICE consent has expired, the other side is deep in its recovery |
 | any, connection `unreachable` | rebuild now instead of waiting for the next background re-probe |
