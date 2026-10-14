@@ -14,11 +14,13 @@ export function makeConfig(overrides?: Partial<typeof DEFAULTS>): Readonly<{
     iceRestartBackoffMs: number[];
     rebuildAttempts: 1;
     recoveryStepTimeoutMs: 8000;
+    restartRequestGapMs: 2000;
     reprobeIntervalsMs: number[];
     networkProbeIntervalMs: 10000;
     sleepCheckIntervalMs: 1000;
     sleepMinMs: 2000;
     sleepRebuildMs: 30000;
+    helloRetryMs: 3000;
     candidateBatchMs: 50;
     directTableIntervalMs: 2000;
     statsIntervalMs: 1000;
@@ -90,6 +92,11 @@ export const DEFAULTS: Readonly<{
     rebuildAttempts: 1;
     /** Time an ICE restart or rebuild may take to reach `connected` before the next step. */
     recoveryStepTimeoutMs: 8000;
+    /**
+     * Minimum time between two ICE restarts and between two rebuilds of one direct connection;
+     * requests inside it are ignored, so both sides asking at once cause one restart.
+     */
+    restartRequestGapMs: 2000;
     /** Background re-probe intervals after `unreachable`; the last value repeats. */
     reprobeIntervalsMs: number[];
     /** Period of the network change probe (srflx candidate comparison). */
@@ -103,6 +110,8 @@ export const DEFAULTS: Readonly<{
      * consent (30 s) has expired and the other side's recovery is far along. See sleepReaction.
      */
     sleepRebuildMs: 30000;
+    /** Period of `hello` resends until the peer answers. */
+    helloRetryMs: 3000;
     /** Candidate batching window (doc §2.4). */
     candidateBatchMs: 50;
     /** Direct connection table broadcast period. */

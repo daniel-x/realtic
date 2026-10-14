@@ -31,6 +31,11 @@ export const DEFAULTS = Object.freeze({
   rebuildAttempts: 1,
   /** Time an ICE restart or rebuild may take to reach `connected` before the next step. */
   recoveryStepTimeoutMs: 8000,
+  /**
+   * Minimum time between two ICE restarts and between two rebuilds of one direct connection;
+   * requests inside it are ignored, so both sides asking at once cause one restart.
+   */
+  restartRequestGapMs: 2000,
   /** Background re-probe intervals after `unreachable`; the last value repeats. */
   reprobeIntervalsMs: [30000, 60000, 120000, 300000],
   /** Period of the network change probe (srflx candidate comparison). */
@@ -44,6 +49,8 @@ export const DEFAULTS = Object.freeze({
    * consent (30 s) has expired and the other side's recovery is far along. See sleepReaction.
    */
   sleepRebuildMs: 30000,
+  /** Period of `hello` resends until the peer answers. */
+  helloRetryMs: 3000,
   /** Candidate batching window (doc §2.4). */
   candidateBatchMs: 50,
 

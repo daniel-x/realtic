@@ -17,7 +17,6 @@ import { Routing } from "./routing/route.js";
 import { SleepWatcher } from "./liveness/sleep.js";
 import { createSignaling } from "./signaling/create.js";
 
-const HELLO_RETRY_MS = 3000;
 const isTurnServer = (s) => [].concat(s.urls).some((u) => /^turns?:/i.test(u));
 const HELD_SIGNAL_LIMIT = 64;
 const MESH_ONLY_REJECT = new Set(["hello", "offer", "answer"]);
@@ -222,7 +221,7 @@ export class RalPeerGroup extends Emitter {
     const timer = this.clock.setInterval(() => {
       if (this.#helloDone.has(peerId) || !this.connections.has(peerId)) return this.#stopHelloRetry(peerId);
       this.router.send(peerId, this.#helloMessage(false, peerId), { serverOnly: true });
-    }, HELLO_RETRY_MS);
+    }, this.config.helloRetryMs);
     this.#helloTimers.set(peerId, timer);
   }
 

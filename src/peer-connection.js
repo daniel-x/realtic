@@ -12,7 +12,6 @@ import { failureHint } from "./diag/hints.js";
 import { sleepReaction } from "./liveness/sleep.js";
 
 const LOG_PART_BYTES = 16384;
-const RESTART_REQUEST_GAP_MS = 2000;
 
 /**
  * The connection to one other peer of the group, kept up as long as the peer is known (plan section
@@ -518,11 +517,11 @@ export class RalPeerConnection extends Emitter {
     if (!this.impolite) return;
     const now = this.#group.clock.now();
     if (msg.rebuild) {
-      if (d.remoteDescription && now - this.#lastRebuildAt > RESTART_REQUEST_GAP_MS) this.#newDirect("rebuild requested");
+      if (d.remoteDescription && now - this.#lastRebuildAt > this.#group.config.restartRequestGapMs) this.#newDirect("rebuild requested");
       return;
     }
     if (msg.iceRestart) {
-      if (now - this.#lastRestartAt < RESTART_REQUEST_GAP_MS) return;
+      if (now - this.#lastRestartAt < this.#group.config.restartRequestGapMs) return;
       this.#iceRestartNow(d, msg.reason ?? "requested");
       return;
     }
@@ -586,7 +585,7 @@ export class RalPeerConnection extends Emitter {
     }
     if (!d) return;
     if (step.kind === "restart") {
-      if (!this.impolite || this.#group.clock.now() - this.#lastRestartAt >= RESTART_REQUEST_GAP_MS) this.#restartIce(d, "recovery");
+      if (!this.impolite || this.#group.clock.now() - this.#lastRestartAt >= this.#group.config.restartRequestGapMs) this.#restartIce(d, "recovery");
     } else if (step.kind === "turn") {
       this.#turnAdded = true;
       this.#ll.info("adding TURN servers");
@@ -618,7 +617,7 @@ export class RalPeerConnection extends Emitter {
 
   #rebuild(reason) {
     if (this.#directClosed) return;
-    if (this.#group.clock.now() - this.#lastRebuildAt < RESTART_REQUEST_GAP_MS) return;
+    if (this.#group.clock.now() - this.#lastRebuildAt < this.#group.config.restartRequestGapMs) return;
     if (this.impolite) this.#newDirect(reason);
     else {
       this.#ll.info("asking for rebuild", { reason });

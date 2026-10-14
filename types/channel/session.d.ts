@@ -41,11 +41,13 @@ export class Session extends Emitter {
         iceRestartBackoffMs: number[];
         rebuildAttempts: 1;
         recoveryStepTimeoutMs: 8000;
+        restartRequestGapMs: 2000;
         reprobeIntervalsMs: number[];
         networkProbeIntervalMs: 10000;
         sleepCheckIntervalMs: 1000;
         sleepMinMs: 2000;
         sleepRebuildMs: 30000;
+        helloRetryMs: 3000;
         candidateBatchMs: 50;
         directTableIntervalMs: 2000;
         statsIntervalMs: 1000;

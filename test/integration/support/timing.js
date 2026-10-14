@@ -24,6 +24,8 @@ export const TEST_TIMINGS = Object.freeze({
   connectTimeoutMs: 3000,
   iceRestartBackoffMs: [100, 300, 600],
   recoveryStepTimeoutMs: 1500,
+  // Above an ICE restart request's round trip through the PHP server (two polls).
+  restartRequestGapMs: 600,
   reprobeIntervalsMs: [1000, 2000, 4000],
   networkProbeIntervalMs: 1000,
   // Below the shortest sleep of DIR-18 (0.6 x stale).
@@ -31,6 +33,8 @@ export const TEST_TIMINGS = Object.freeze({
   sleepMinMs: 800,
   // Above the longest page freeze of the other scenarios (DIR-9: 2 x stale), which must not rebuild.
   sleepRebuildMs: 8000,
+  // A resend only helps when the server dropped the first hello; PHP delivers within one poll.
+  helloRetryMs: 1000,
   candidateBatchMs: 20,
   directTableIntervalMs: 300,
   statsIntervalMs: 500,
