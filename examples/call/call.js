@@ -54,14 +54,32 @@ group.on("peerleft", (peer) => {
   tileFor.delete(peer.id);
 });
 
+/**
+ * Camera and microphone, else the microphone alone (no camera, or the camera is busy), else the
+ * camera alone. Returns the stream and what is missing, or throws the first error. A denied
+ * permission ends the attempts.
+ */
+async function localMedia() {
+  let first;
+  for (const [constraints, missing] of [[{ audio: true, video: true }, null], [{ audio: true }, "camera"], [{ video: true }, "microphone"]]) {
+    try {
+      return { stream: await navigator.mediaDevices.getUserMedia(constraints), missing, error: first };
+    } catch (error) {
+      if (error.name === "NotAllowedError") throw error;
+      first ??= error;
+    }
+  }
+  throw first;
+}
+
 // Joining without devices is normal: publish what exists, receive the rest.
 let mic = null;
 try {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+  const { stream, missing, error } = await localMedia();
   const me = tile(selfId);
   me.video.muted = true;
   me.video.srcObject = stream;
-  me.label.textContent = `${selfId} (you)`;
+  me.label.textContent = missing ? `${selfId} (you, no ${missing}: ${error.name})` : `${selfId} (you)`;
   for (const track of stream.getTracks()) {
     const pub = group.publish(track, { tag: track.kind === "audio" ? "mic" : "camera" });
     if (track.kind === "audio") mic = pub;
