@@ -30,8 +30,10 @@ export const DEFAULTS = Object.freeze({
   reprobeIntervalsMs: [30000, 60000, 120000, 300000],
   /** Period of the network change probe (srflx candidate comparison). */
   networkProbeIntervalMs: 10000,
-  /** Period of the sleep check: a tick later than this by `SLOW_CONNECTION_MS` or more is a sleep. */
+  /** Period of the sleep check timer. */
   sleepCheckIntervalMs: 1000,
+  /** A sleep check tick this late or later is a sleep; less is load on the main thread. */
+  sleepMinMs: 2000,
   /**
    * After a sleep this long, direct connections are rebuilt at once instead of ICE restarted: ICE
    * consent (30 s) has expired and the other side's recovery is far along. See sleepReaction.

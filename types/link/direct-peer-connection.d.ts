@@ -115,6 +115,7 @@ declare function defineClass(Base: typeof RTCPeerConnection): {
             reprobeIntervalsMs: number[];
             networkProbeIntervalMs: 10000;
             sleepCheckIntervalMs: 1000;
+            sleepMinMs: 2000;
             sleepRebuildMs: 30000;
             candidateBatchMs: 50;
             linkStateIntervalMs: 2000;

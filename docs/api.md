@@ -155,5 +155,5 @@ All values in `DEFAULTS` (`src/config.js`) can be overridden per group. The most
 | `shareLogWithPeers` | false | answer `requestLog()` |
 | `stableTracks` | false | one generated track per publication (Chromium) |
 | `relayPeerDownMs` | 3000 | a relay reports a directly connected peer as down after this silence |
-| `sleepCheckIntervalMs` | 1000 | sleep check timer; a tick late by `SLOW_CONNECTION_MS` or more is a sleep |
+| `sleepCheckIntervalMs`, `sleepMinMs` | 1000, 2000 | sleep check timer; a tick `sleepMinMs` or more late is a sleep |
 | `sleepRebuildMs` | 30000 | after a sleep this long, direct connections are rebuilt instead of ICE restarted |

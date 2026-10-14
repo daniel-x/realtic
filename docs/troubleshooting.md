@@ -57,9 +57,9 @@ working connections. The default of 5 s survives a WiFi to LTE handover.
 ## Sleep and Resume
 
 Browsers have no event for a resume from system sleep. A timer every `sleepCheckIntervalMs`
-detects it: a tick that comes late by `SLOW_CONNECTION_MS` or more is a sleep, and its length is
-the larger of the monotonic and the wall-clock delta between two ticks (the monotonic clock pauses
-during sleep on Linux and macOS, not on Windows). The log shows `resumed after sleep` with
+detects it: a tick that comes `sleepMinMs` (2 s) or more late is a sleep; less can be load on the
+main thread. Its length is the larger of the monotonic and the wall-clock delta between two ticks
+(the monotonic clock pauses during sleep on Linux and macOS, not on Windows). The log shows `resumed after sleep` with
 `sleepMs`, and each connection logs its `sleep reaction`:
 
 | Sleep | Reaction |

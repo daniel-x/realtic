@@ -26,8 +26,10 @@ export const TEST_TIMINGS = Object.freeze({
   recoveryStepTimeoutMs: 1500,
   reprobeIntervalsMs: [1000, 2000, 4000],
   networkProbeIntervalMs: 1000,
-  // Above the longest page freeze of the other scenarios (DIR-9: 2 x stale), which must not rebuild.
+  // Below the shortest sleep of DIR-18 (0.6 x stale).
   sleepCheckIntervalMs: 250,
+  sleepMinMs: 800,
+  // Above the longest page freeze of the other scenarios (DIR-9: 2 x stale), which must not rebuild.
   sleepRebuildMs: 8000,
   candidateBatchMs: 20,
   linkStateIntervalMs: 300,

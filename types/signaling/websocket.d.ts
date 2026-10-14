@@ -34,7 +34,7 @@ export class RalWebSocketSignaling {
     }) => void) | null;
     /** @type {((connected: boolean) => void) | null} */
     onstatus: ((connected: boolean) => void) | null;
-    /** True while the socket is open. */
+    /** True while the socket is open, or while `resume()` replaces it. */
     get connected(): boolean;
     /**
      * @param {string} to
@@ -47,7 +47,11 @@ export class RalWebSocketSignaling {
      * @param {object} message
      */
     sendBeacon(to: string, message: object): boolean;
-    /** Reconnects at once, e.g. after the device slept: the old socket may be dead without notice. */
+    /**
+     * Replaces the socket, e.g. after the device slept: the old one may be dead without notice.
+     * Make before break: messages sent until the new socket opens wait for it, then the old one
+     * closes. If the new socket fails, the queued messages are dropped and the old one stays.
+     */
     resume(): void;
     close(): void;
     #private;

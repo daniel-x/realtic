@@ -29,7 +29,7 @@ export function sleepReaction({ sleepMs, unobservedMs, silenceMs, unreachable }:
  * than scheduled. Browsers have no event for a resume from system sleep.
  *
  * The sleep estimate is the larger of the monotonic and the wall-clock delta between two ticks,
- * minus the interval: the monotonic clock pauses during sleep on Linux and macOS but keeps
+ * minus the interval, so it is low by up to one interval: the monotonic clock pauses during sleep on Linux and macOS but keeps
  * running on Windows, and the wall clock runs on everywhere. `unobservedMs` is the part the
  * monotonic clock missed, which silence measured with it does not contain. A wall-clock step
  * without sleep looks like a sleep; the reactions are safe for that case.

@@ -9,6 +9,8 @@ export class RalWebSocketSignaling {
   #closed = false;
   #retry = 0;
   #timer = null;
+  #next = null;
+  #queued = [];
 
   /**
    * @param {string} url server URL, e.g. `wss://example.com/signal`
@@ -29,22 +31,16 @@ export class RalWebSocketSignaling {
     this.#connect();
   }
 
-  /** True while the socket is open. */
+  /** True while the socket is open, or while `resume()` replaces it. */
   get connected() {
-    return this.#ws?.readyState === 1;
+    return this.#ws?.readyState === 1 || this.#next !== null;
   }
 
-  #connect() {
-    if (this.#closed) return;
+  #socket() {
     const u = new URL(this.url);
     u.searchParams.set("id", this.selfId);
     u.searchParams.set("group", this.group);
     const ws = new this.WS(u.toString());
-    this.#ws = ws;
-    ws.onopen = () => {
-      this.#retry = 0;
-      this.onstatus?.(true);
-    };
     ws.onmessage = (event) => {
       let frame;
       try {
@@ -55,13 +51,32 @@ export class RalWebSocketSignaling {
       if (frame.presence) this.onpresence?.({ type: frame.presence, peer: frame.peer });
       else if (frame.from && frame.msg) this.onmessage?.(frame.from, frame.msg);
     };
-    ws.onclose = () => {
-      if (this.#ws !== ws) return;
-      this.onstatus?.(false);
-      const delay = Math.min(10000, 500 * 2 ** this.#retry++);
-      this.#timer = setTimeout(() => this.#connect(), delay);
-    };
     ws.onerror = () => {};
+    return ws;
+  }
+
+  #connect() {
+    if (this.#closed) return;
+    const ws = this.#socket();
+    this.#ws = ws;
+    this.#adopt(ws);
+  }
+
+  #adopt(ws) {
+    ws.onopen = () => {
+      this.#retry = 0;
+      this.onstatus?.(true);
+    };
+    ws.onclose = () => {
+      if (this.#ws === ws && !this.#next) this.#lost();
+    };
+  }
+
+  #lost() {
+    if (this.#closed) return;
+    this.onstatus?.(false);
+    const delay = Math.min(10000, 500 * 2 ** this.#retry++);
+    this.#timer = setTimeout(() => this.#connect(), delay);
   }
 
   /**
@@ -70,7 +85,9 @@ export class RalWebSocketSignaling {
    */
   send(to, message) {
     if (!this.connected) throw new Error("signaling not connected");
-    this.#ws.send(JSON.stringify({ to, msg: message }));
+    const frame = JSON.stringify({ to, msg: message });
+    if (this.#next) this.#queued.push(frame);
+    else this.#ws.send(frame);
   }
 
   /**
@@ -87,22 +104,43 @@ export class RalWebSocketSignaling {
     return globalThis.navigator?.sendBeacon?.(u.toString(), JSON.stringify({ to, msg: message })) ?? false;
   }
 
-  /** Reconnects at once, e.g. after the device slept: the old socket may be dead without notice. */
+  /**
+   * Replaces the socket, e.g. after the device slept: the old one may be dead without notice.
+   * Make before break: messages sent until the new socket opens wait for it, then the old one
+   * closes. If the new socket fails, the queued messages are dropped and the old one stays.
+   */
   resume() {
-    if (this.#closed) return;
-    clearTimeout(this.#timer);
-    this.#retry = 0;
-    const old = this.#ws;
-    const wasOpen = old?.readyState === 1;
-    this.#ws = null;
-    old?.close();
-    if (wasOpen) this.onstatus?.(false);
-    this.#connect();
+    if (this.#closed || this.#next) return;
+    if (this.#ws?.readyState !== 1) {
+      clearTimeout(this.#timer);
+      this.#retry = 0;
+      this.#ws?.close();
+      this.#connect();
+      return;
+    }
+    const next = this.#socket();
+    this.#next = next;
+    next.onopen = () => {
+      const old = this.#ws;
+      this.#next = null;
+      this.#ws = next;
+      this.#adopt(next);
+      for (const frame of this.#queued.splice(0)) next.send(frame);
+      old.close();
+    };
+    next.onclose = () => {
+      if (this.#next !== next) return;
+      this.#next = null;
+      this.#queued.length = 0;
+      if (this.#ws.readyState !== 1) this.#lost();
+    };
   }
 
   close() {
     this.#closed = true;
     clearTimeout(this.#timer);
+    this.#queued.length = 0;
+    this.#next?.close();
     this.#ws?.close();
   }
 }

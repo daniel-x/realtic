@@ -417,7 +417,8 @@ for (const pairing of pairings()) {
           const rebuilt = before !== (await session(s, 1, 0));
           console.log(`    DIR-18 ${pairing} ${i}: estimated ${detected?.data.sleepMs} ms of ${c.ms}, ${reaction?.data.reaction}, rebuilt ${rebuilt}, delivered ${recoveredMs} ms after the resume`);
           assert.ok(detected, "sleep detected");
-          near(detected.data.sleepMs, c.ms, 0.2 * c.ms, "estimated sleep");
+          const est = detected.data.sleepMs;
+          assert.ok(est >= c.ms - T.sleepCheckIntervalMs - 100 && est <= c.ms + 100, `estimated sleep ${est} ms, at most one check interval below ${c.ms}`);
           assert.equal(reaction?.data.reaction, c.reaction);
           assert.equal(rebuilt, c.reaction === "rebuild", "rebuilt");
           assert.ok(recoveredMs < 2 * T.STALE_CONNECTION_MS + 2000, `delivery ${recoveredMs} ms after the resume`);

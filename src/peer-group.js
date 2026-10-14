@@ -515,7 +515,7 @@ export class RalPeerGroup extends Emitter {
     const sleep = new SleepWatcher({
       clock: this.clock,
       intervalMs: this.config.sleepCheckIntervalMs,
-      minSleepMs: this.config.SLOW_CONNECTION_MS,
+      minSleepMs: this.config.sleepMinMs,
       onresume: (s) => this.#onResume(s),
     });
     sleep.start();
