@@ -53,6 +53,8 @@ export class RalPeerGroup extends Emitter {
         recoveryStepTimeoutMs: 8000;
         reprobeIntervalsMs: number[];
         networkProbeIntervalMs: 10000;
+        sleepCheckIntervalMs: 1000;
+        sleepRebuildMs: 30000;
         candidateBatchMs: 50;
         linkStateIntervalMs: 2000;
         statsIntervalMs: 1000;

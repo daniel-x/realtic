@@ -53,3 +53,22 @@ with `checking` is the evidence that checks went out and nothing came back.
 Do not lower `STALE_CONNECTION_MS` below about 1 s. A phone on idle WiFi parks its radio and
 shows latency spikes of several hundred milliseconds; a stale threshold below that tears down
 working connections. The default of 5 s survives a WiFi to LTE handover.
+
+## Sleep and Resume
+
+Browsers have no event for a resume from system sleep. A timer every `sleepCheckIntervalMs`
+detects it: a tick that comes late by `SLOW_CONNECTION_MS` or more is a sleep, and its length is
+the larger of the monotonic and the wall-clock delta between two ticks (the monotonic clock pauses
+during sleep on Linux and macOS, not on Windows). The log shows `resumed after sleep` with
+`sleepMs`, and each connection logs its `sleep reaction`:
+
+| Sleep | Reaction |
+| ----- | -------- |
+| below `STALE_CONNECTION_MS` | heartbeat and liveness check now; the other side has not noticed |
+| up to `sleepRebuildMs` (30 s) | ICE restart now; signaling reconnects, the network probe runs |
+| `sleepRebuildMs` or more | rebuild now: ICE consent has expired, the other side is deep in its recovery |
+| any, connection `unreachable` | rebuild now instead of waiting for the next background re-probe |
+
+A restart or rebuild needs evidence of a suspension: the monotonic clock missed at least half of
+the sleep, or the connection received nothing for at least half of it. A hidden tab whose timers
+the browser throttled shows neither, because data keeps arriving, and only gets the check.

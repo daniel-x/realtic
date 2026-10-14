@@ -120,6 +120,15 @@ export class RalPeerConnection extends Emitter {
      * @param {string} reason
      */
     directIceRestart(reason: string): void;
+    /**
+     * Reacts to a sleep of the device (see SleepWatcher and sleepReaction): checks, restarts or
+     * rebuilds the direct connection now, and checks the end to end liveness of a relayed route.
+     * @param {{sleepMs: number, unobservedMs: number}} sleep
+     */
+    resumeAfterSleep({ sleepMs, unobservedMs }: {
+        sleepMs: number;
+        unobservedMs: number;
+    }): void;
     /** Re-checks liveness now and restarts ICE when the direct connection is slow or stale. */
     checkDirect(reason: any): void;
     /**

@@ -114,6 +114,8 @@ declare function defineClass(Base: typeof RTCPeerConnection): {
             recoveryStepTimeoutMs: 8000;
             reprobeIntervalsMs: number[];
             networkProbeIntervalMs: 10000;
+            sleepCheckIntervalMs: 1000;
+            sleepRebuildMs: 30000;
             candidateBatchMs: 50;
             linkStateIntervalMs: 2000;
             statsIntervalMs: 1000;
@@ -188,6 +190,8 @@ declare function defineClass(Base: typeof RTCPeerConnection): {
         "__#private@#ctlOpen": boolean;
         "__#private@#everConnected": boolean;
         "__#private@#closed": boolean;
+        "__#private@#retired": Promise<any>;
+        "__#private@#onRetired": any;
         /** @type {{tr: RTCRtpTransceiver, kind: string, key: string|null}[]} */
         "__#private@#slots": {
             tr: RTCRtpTransceiver;
@@ -267,11 +271,18 @@ declare function defineClass(Base: typeof RTCPeerConnection): {
          * Applies an `offer`, `answer` or `cand` message.
          * @param {object} msg
          */
-        ralHandleSignal(msg: object): Promise<void>;
+        ralHandleSignal(msg: object): Promise<any>;
         /** Runs a negotiation round (impolite: offer; polite: `renegotiate`). */
-        ralNegotiate(reason: any): Promise<void>;
+        ralNegotiate(reason: any): Promise<any>;
         /** Restarts ICE now, rolling back an unanswered offer first. */
-        ralIceRestart(): Promise<void>;
+        ralIceRestart(): Promise<any>;
+        "__#private@#iceRestart"(): Promise<void>;
+        /**
+         * Settles with `operation` or when this connection is retired, whichever comes first.
+         * Chromium leaves the promise of an operation pending forever when the connection closes
+         * under it, which would block the owner's negotiation queue for every later connection.
+         */
+        "__#private@#untilRetired"(operation: any): Promise<any>;
         /**
          * Sends a control message on `ctl`.
          * @param {object} msg

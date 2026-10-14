@@ -7,12 +7,13 @@
  *
  * `send` may return a promise; a rejected or thrown send counts as lost. `onpresence` receives
  * `{ type: "join" | "leave", peer }`. Adapters may implement `sendBeacon(to, message)` for use
- * from `pagehide`.
+ * from `pagehide`, and `resume()`, which the group calls after the device slept.
  * @typedef {object} SignalingAdapter
  * @property {(to: string, message: object) => (void | Promise<void>)} send
  * @property {((from: string, message: object) => void) | null} onmessage
  * @property {((event: {type: "join"|"leave", peer: string}) => void) | null} [onpresence]
  * @property {(to: string, message: object) => boolean} [sendBeacon]
+ * @property {() => void} [resume]
  * @property {() => void} close
  */
 /**
@@ -44,7 +45,7 @@ export class RalMemoryHub {
  *
  * `send` may return a promise; a rejected or thrown send counts as lost. `onpresence` receives
  * `{ type: "join" | "leave", peer }`. Adapters may implement `sendBeacon(to, message)` for use
- * from `pagehide`.
+ * from `pagehide`, and `resume()`, which the group calls after the device slept.
  */
 export type SignalingAdapter = {
     send: (to: string, message: object) => (void | Promise<void>);
@@ -54,5 +55,6 @@ export type SignalingAdapter = {
         peer: string;
     }) => void) | null;
     sendBeacon?: (to: string, message: object) => boolean;
+    resume?: () => void;
     close: () => void;
 };

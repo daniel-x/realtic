@@ -129,7 +129,8 @@ adapter with `createSignaling(settings, selfId)`. `type` defaults to `"websocket
 - `RalMemoryHub` for tests: `hub.join(id)` returns an adapter.
 
 An adapter of your own implements `send(to, msg)`, `onmessage(from, msg)`, optionally
-`onpresence({ type: "join" | "leave", peer })`, `connected`, `sendBeacon(to, msg)`, and `close()`.
+`onpresence({ type: "join" | "leave", peer })`, `connected`, `sendBeacon(to, msg)`, `resume()`
+(called after the device slept; reconnect or poll now), and `close()`.
 
 ## Configuration
 
@@ -154,3 +155,5 @@ All values in `DEFAULTS` (`src/config.js`) can be overridden per group. The most
 | `shareLogWithPeers` | false | answer `requestLog()` |
 | `stableTracks` | false | one generated track per publication (Chromium) |
 | `relayPeerDownMs` | 3000 | a relay reports a directly connected peer as down after this silence |
+| `sleepCheckIntervalMs` | 1000 | sleep check timer; a tick late by `SLOW_CONNECTION_MS` or more is a sleep |
+| `sleepRebuildMs` | 30000 | after a sleep this long, direct connections are rebuilt instead of ICE restarted |

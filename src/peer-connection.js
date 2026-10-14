@@ -9,6 +9,7 @@ import { RecoverySchedule } from "./link/ice-restart.js";
 import { directPeerConnectionClass } from "./link/direct-peer-connection.js";
 import { readStats, pairDump, summarizeDump } from "./diag/pair-dump.js";
 import { failureHint } from "./diag/hints.js";
+import { sleepReaction } from "./liveness/sleep.js";
 
 const LOG_PART_BYTES = 16384;
 const RESTART_REQUEST_GAP_MS = 2000;
@@ -634,6 +635,23 @@ export class RalPeerConnection extends Emitter {
     const d = this.#directConn;
     if (!d || this.#directClosed) return;
     this.#restartIce(d, reason);
+  }
+
+  /**
+   * Reacts to a sleep of the device (see SleepWatcher and sleepReaction): checks, restarts or
+   * rebuilds the direct connection now, and checks the end to end liveness of a relayed route.
+   * @param {{sleepMs: number, unobservedMs: number}} sleep
+   */
+  resumeAfterSleep({ sleepMs, unobservedMs }) {
+    this.#e2eMonitor.check();
+    if (this.#directClosed || !this.#directHooks) return;
+    const d = this.#directConn;
+    const reaction = sleepReaction({ sleepMs, unobservedMs, silenceMs: d?.ralSilence ?? Infinity, unreachable: this.#directState === "unreachable" }, this.#group.config);
+    const reason = `resumed after ${(sleepMs / 1000).toFixed(1)} s of sleep`;
+    this.#ll.info("sleep reaction", { reaction, sleepMs: Math.round(sleepMs) });
+    if (reaction === "rebuild") this.rebuildDirect(reason);
+    else if (reaction === "restart") this.directIceRestart(reason);
+    else this.checkDirect(reason);
   }
 
   /** Re-checks liveness now and restarts ICE when the direct connection is slow or stale. */

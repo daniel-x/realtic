@@ -1,5 +1,6 @@
 // Test page controller: the Node test drives one peer per page through `window.t`.
 import { RalPeerGroup, attachMedia } from "../../../src/index.js";
+import { realClock } from "../../../src/util/clock.js";
 
 const BITS = 16;
 const BLOCK = 20;
@@ -19,6 +20,10 @@ window.t = t;
 window.addEventListener("error", (e) => t.errors.push(String(e.message)));
 window.addEventListener("unhandledrejection", (e) => t.errors.push(String(e.reason?.stack ?? e.reason)));
 
+// The library clock, with a monotonic clock that `hook.sleep` can pause like a sleep on Linux.
+let pausedMs = 0;
+const clock = { ...realClock, now: () => realClock.now() - pausedMs };
+
 const now = () => Date.now();
 const ev = (type, data) => t.events.push({ time: now(), type, ...data });
 
@@ -32,7 +37,7 @@ t.start = ({ id, signaling: signalingOptions, groupName = "test", config = {}, i
   const cfg = { ...config, testHooks };
   if (config.relayDenyAll) cfg.allowRelay = () => false;
   for (const k of ["probeIceServers", "protocol", "caps", "relayDenyAll"]) delete cfg[k];
-  const group = new RalPeerGroup({ selfId: id, signaling: { ...signalingOptions, group: groupName }, iceServers, config: cfg, autoPeers });
+  const group = new RalPeerGroup({ selfId: id, signaling: { ...signalingOptions, group: groupName }, iceServers, config: cfg, autoPeers, clock });
   t.group = group;
   group.on("connection", (peer) => wirePeer(peer));
   group.on("peerleft", (peer, reason) => ev("peerleft", { peer: peer.id, reason }));
@@ -284,6 +289,11 @@ t.hook = {
   busy: (ms) => {
     const end = performance.now() + ms;
     while (performance.now() < end);
+  },
+  /** Blocks the page for `ms` like a device sleep; with `pauseClock`, the monotonic clock misses it. */
+  sleep: (ms, pauseClock) => {
+    t.hook.busy(ms);
+    if (pauseClock) pausedMs += ms;
   },
   captureForwarded: () => (t.forwarded = []),
   transports: (peerId) => t.group.directConns.get(peerId)?.ralTransports ?? [],

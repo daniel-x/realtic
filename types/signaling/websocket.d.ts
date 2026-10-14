@@ -47,6 +47,8 @@ export class RalWebSocketSignaling {
      * @param {object} message
      */
     sendBeacon(to: string, message: object): boolean;
+    /** Reconnects at once, e.g. after the device slept: the old socket may be dead without notice. */
+    resume(): void;
     close(): void;
     #private;
 }

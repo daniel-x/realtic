@@ -75,6 +75,8 @@ function defineClass(Base) {
     #ctlOpen = false;
     #everConnected = false;
     #closed = false;
+    #retired;
+    #onRetired;
     /** @type {{tr: RTCRtpTransceiver, kind: string, key: string|null}[]} */
     #slots = [];
     /** @type {Map<string, {kind: string, resolve: Function, reject: Function}>} */
@@ -102,6 +104,7 @@ function defineClass(Base) {
      */
     constructor(rtcConfig, { connection, remoteId, impolite, config, clock, log, hooks }) {
       super(rtcConfig);
+      this.#retired = new Promise((resolve) => (this.#onRetired = resolve));
       /** The RalPeerConnection this connection belongs to. */
       this.ralConnection = connection;
       this.ralRemoteId = remoteId;
@@ -145,7 +148,7 @@ function defineClass(Base) {
       };
       this.onnegotiationneeded = () => {
         if (this.#closed || !impolite) return;
-        hooks.enqueue(() => this.#neg.negotiate("negotiationneeded"));
+        hooks.enqueue(() => this.#untilRetired(this.#neg.negotiate("negotiationneeded")));
       };
       this.oniceconnectionstatechange = () => this.#onIceState();
       this.onconnectionstatechange = () => this.#onConnState();
@@ -235,19 +238,23 @@ function defineClass(Base) {
      * Applies an `offer`, `answer` or `cand` message.
      * @param {object} msg
      */
-    async ralHandleSignal(msg) {
-      if (msg.t === "offer") await this.#neg.handleOffer(msg);
-      else if (msg.t === "answer") await this.#neg.handleAnswer(msg);
-      else if (msg.t === "cand") await this.#neg.handleCandidates(msg);
+    ralHandleSignal(msg) {
+      if (msg.t === "offer") return this.#untilRetired(this.#neg.handleOffer(msg));
+      if (msg.t === "answer") return this.#untilRetired(this.#neg.handleAnswer(msg));
+      if (msg.t === "cand") return this.#untilRetired(this.#neg.handleCandidates(msg));
     }
 
     /** Runs a negotiation round (impolite: offer; polite: `renegotiate`). */
     ralNegotiate(reason) {
-      return this.#neg.negotiate(reason);
+      return this.#untilRetired(this.#neg.negotiate(reason));
     }
 
     /** Restarts ICE now, rolling back an unanswered offer first. */
-    async ralIceRestart() {
+    ralIceRestart() {
+      return this.#untilRetired(this.#iceRestart());
+    }
+
+    async #iceRestart() {
       if (this.#closed) return;
       if (this.signalingState === "have-local-offer") {
         this.#l.info("rolling back unanswered offer");
@@ -255,6 +262,15 @@ function defineClass(Base) {
       }
       this.restartIce();
       await this.#neg.negotiate("ice restart");
+    }
+
+    /**
+     * Settles with `operation` or when this connection is retired, whichever comes first.
+     * Chromium leaves the promise of an operation pending forever when the connection closes
+     * under it, which would block the owner's negotiation queue for every later connection.
+     */
+    #untilRetired(operation) {
+      return Promise.race([operation, this.#retired]);
     }
 
     /**
@@ -317,6 +333,7 @@ function defineClass(Base) {
     ralRetire(silent = false) {
       if (this.#closed) return;
       this.#closed = true;
+      this.#onRetired();
       if (this.#connectTimer !== null) this.#clock.clearTimeout(this.#connectTimer);
       this.#clock.clearInterval(this.#checkTimer);
       this.#clock.clearInterval(this.#statsTimer);

@@ -392,6 +392,40 @@ for (const pairing of pairings()) {
       });
     });
 
+    const SLEEPS = [
+      { name: "below the stale threshold", ms: 0.6 * T.STALE_CONNECTION_MS, pause: true, reaction: "check" },
+      { name: "below the rebuild threshold", ms: 1.5 * T.STALE_CONNECTION_MS, pause: true, reaction: "restart" },
+      { name: "above the rebuild threshold", ms: T.sleepRebuildMs + 1000, pause: true, reaction: "rebuild" },
+      { name: "above the rebuild threshold, monotonic clock running", ms: T.sleepRebuildMs + 1000, pause: false, reaction: "rebuild" },
+    ];
+    for (const [i, c] of SLEEPS.entries()) {
+      test(`DIR-18 sleep and resume, ${c.name}`, async () => {
+        await withScenario(`DIR-18-${pairing}-${i}`, { browsers: two(pairing) }, async (s) => {
+          await connectAll(s);
+          await openChannel(s, 0, 1, "chat");
+          const before = await session(s, 1, 0);
+          const t0 = Date.now();
+          s.block(0, 1);
+          await s.eval(1, ([ms, pause]) => window.t.hook.sleep(ms, pause), [c.ms, c.pause]);
+          const resumed = Date.now();
+          s.block(0, 1, false);
+          await sendMany(s, 1, 0, "chat", "w", 10);
+          await waitFor(async () => (await messages(s, 0, 1, "chat")).length >= 10, 30000, "messages after the resume");
+          const recoveredMs = Date.now() - resumed;
+          const [detected] = await logMatches(s, 1, /^resumed after sleep$/, t0);
+          const [reaction] = await logMatches(s, 1, /^sleep reaction$/, t0);
+          const rebuilt = before !== (await session(s, 1, 0));
+          console.log(`    DIR-18 ${pairing} ${i}: estimated ${detected?.data.sleepMs} ms of ${c.ms}, ${reaction?.data.reaction}, rebuilt ${rebuilt}, delivered ${recoveredMs} ms after the resume`);
+          assert.ok(detected, "sleep detected");
+          near(detected.data.sleepMs, c.ms, 0.2 * c.ms, "estimated sleep");
+          assert.equal(reaction?.data.reaction, c.reaction);
+          assert.equal(rebuilt, c.reaction === "rebuild", "rebuilt");
+          assert.ok(recoveredMs < 2 * T.STALE_CONNECTION_MS + 2000, `delivery ${recoveredMs} ms after the resume`);
+          assert.equal(await s.eval(0, (id) => window.t.state(id), s.id(1)), "connected");
+        });
+      });
+    }
+
     for (const stableTracks of pairing === "chromium" ? [false, true] : [false]) {
       test(`DIR-17 stable ${stableTracks ? "track" : "stream"} survives a link rebuild`, async () => {
         await withScenario(`DIR-17-${pairing}-${stableTracks}`, { browsers: two(pairing), peerConfig: { 1: { stableTracks } } }, async (s) => {

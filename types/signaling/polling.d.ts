@@ -61,6 +61,8 @@ export class RalPollingSignaling {
      * @param {object} message
      */
     sendBeacon(to: string, message: object): boolean;
+    /** Polls at once, without the failure backoff, e.g. after the device slept. */
+    resume(): void;
     /** Stops polling and tells the server this client left. */
     close(): void;
     #private;

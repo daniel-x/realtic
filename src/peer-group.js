@@ -14,6 +14,7 @@ import { MediaManager } from "./media/media.js";
 import { collect as collectCaps, features } from "./media/capabilities.js";
 import { wants, normalize } from "./media/subscriptions.js";
 import { Routing } from "./routing/route.js";
+import { SleepWatcher } from "./liveness/sleep.js";
 import { createSignaling } from "./signaling/create.js";
 
 const HELLO_RETRY_MS = 3000;
@@ -511,6 +512,29 @@ export class RalPeerGroup extends Emitter {
     on(g, "online", () => this.checkLinks("online"));
     on(g.navigator?.connection, "change", () => this.network.onConnectionChange());
     this.network.start();
+    const sleep = new SleepWatcher({
+      clock: this.clock,
+      intervalMs: this.config.sleepCheckIntervalMs,
+      minSleepMs: this.config.SLOW_CONNECTION_MS,
+      onresume: (s) => this.#onResume(s),
+    });
+    sleep.start();
+    this.#cleanup.push(() => sleep.stop());
+  }
+
+  /**
+   * After a sleep of the device: every connection checks, restarts or rebuilds its direct
+   * connection (see sleepReaction). From the stale threshold on, the other side has noticed too
+   * and the network may have changed, so signaling reconnects and the network probe runs.
+   */
+  #onResume(sleep) {
+    if (this.#closed) return;
+    this.log.write("info", "group", "resumed after sleep", { sleepMs: Math.round(sleep.sleepMs), unobservedMs: Math.round(sleep.unobservedMs) });
+    if (sleep.sleepMs >= this.config.STALE_CONNECTION_MS) {
+      this.signaling.resume?.();
+      this.network.probeNow("resume");
+    }
+    for (const conn of this.connections.values()) conn.resumeAfterSleep(sleep);
   }
 
   #onVisibility(hidden) {

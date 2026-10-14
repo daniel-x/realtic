@@ -87,6 +87,19 @@ export class RalWebSocketSignaling {
     return globalThis.navigator?.sendBeacon?.(u.toString(), JSON.stringify({ to, msg: message })) ?? false;
   }
 
+  /** Reconnects at once, e.g. after the device slept: the old socket may be dead without notice. */
+  resume() {
+    if (this.#closed) return;
+    clearTimeout(this.#timer);
+    this.#retry = 0;
+    const old = this.#ws;
+    const wasOpen = old?.readyState === 1;
+    this.#ws = null;
+    old?.close();
+    if (wasOpen) this.onstatus?.(false);
+    this.#connect();
+  }
+
   close() {
     this.#closed = true;
     clearTimeout(this.#timer);
