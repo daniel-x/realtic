@@ -100,7 +100,7 @@ export class NetemProxy {
 
   #bandwidthOk(key, rule, size) {
     if (!rule.bandwidth) return true;
-    const now = Date.now();
+    const now = performance.now();
     let b = this.#buckets.get(key);
     const capacity = (rule.bandwidth / 8) * 0.1;
     if (!b) this.#buckets.set(key, (b = { tokens: capacity, at: now }));

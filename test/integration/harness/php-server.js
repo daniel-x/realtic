@@ -56,9 +56,9 @@ export async function createPhpServer({ workers = 8, clientLogDir } = {}) {
   });
   let stderr = "";
   child.stderr.on("data", (d) => (stderr = (stderr + d).slice(-4000)));
-  const deadline = Date.now() + 10000;
+  const deadline = performance.now() + 10000;
   while (!(await canConnect(port))) {
-    if (child.exitCode !== null || Date.now() > deadline) throw new Error(`PHP server did not start: ${stderr}`);
+    if (child.exitCode !== null || performance.now() > deadline) throw new Error(`PHP server did not start: ${stderr}`);
     await new Promise((r) => setTimeout(r, 50));
   }
   const url = `http://localhost:${port}/server/php/signal.php`;

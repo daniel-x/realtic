@@ -40,16 +40,16 @@ async function waitRoute(s, p, q, kind, via, timeoutMs = 30000) {
 
 /** Polls `count()` until it reaches `target` or stops growing for `quietMs`, at most `timeoutMs`. */
 async function untilSettled(count, target, quietMs, timeoutMs) {
-  const end = Date.now() + timeoutMs;
+  const end = performance.now() + timeoutMs;
   let last = -1;
-  let since = Date.now();
-  while (Date.now() < end) {
+  let since = performance.now();
+  while (performance.now() < end) {
     const n = await count();
     if (n >= target) return;
     if (n !== last) {
       last = n;
-      since = Date.now();
-    } else if (Date.now() - since >= quietMs) return;
+      since = performance.now();
+    } else if (performance.now() - since >= quietMs) return;
     await sleep(200);
   }
 }

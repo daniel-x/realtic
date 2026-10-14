@@ -39,9 +39,9 @@ for (const pairing of pairings()) {
         pairs.push([i, j]);
       }
       const sent = pairs.map(() => 0);
-      const end = Date.now() + DURATION;
+      const end = performance.now() + DURATION;
       const faults = [];
-      while (Date.now() < end) {
+      while (performance.now() < end) {
         const kind = ["block", "block", "loss", "freeze", "rebind", "oneway"][pick(6)];
         const a = pick(N);
         let b = pick(N - 1);

@@ -17,15 +17,16 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Polls `fn` until it returns a truthy value or the timeout expires.
+ * The deadline uses the monotonic clock, so a host suspend does not expire it.
  * @template T
  * @param {() => Promise<T> | T} fn
  * @param {number} timeoutMs
  * @param {string} what
  */
 export async function waitFor(fn, timeoutMs, what = "condition") {
-  const end = Date.now() + timeoutMs;
+  const end = performance.now() + timeoutMs;
   let last;
-  while (Date.now() < end) {
+  while (performance.now() < end) {
     last = await fn();
     if (last) return last;
     await sleep(100);
