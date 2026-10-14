@@ -27,12 +27,12 @@ export class Routing {
     get load(): number;
     peerReady(peerId: any): void;
     peerGone(peerId: any): void;
-    linkRebuilt(peerId: any): void;
-    linkOpen(link: any): void;
-    linkState(peerId: any, state: any, reason: any): void;
-    onMetrics(link: any, m: any, stats: any): void;
+    onDirectRebuilt(peerId: any): void;
+    onDirectOpen(directConn: any): void;
+    onDirectState(peerId: any, state: any, reason: any): void;
+    onMetrics(directConn: any, m: any, stats: any): void;
     tick(): void;
-    onCtl(link: any, msg: any): void;
+    onCtl(directConn: any, msg: any): void;
     onPeerControl(peer: any, msg: any): void;
     /** Our own subscription for `origin` changed: tell the origin and the pair's relays. */
     subscriptionChanged(origin: any): void;
@@ -40,11 +40,11 @@ export class Routing {
     hasFlowVia(peerId: any, via: any): boolean;
     /** True when envelopes from `src` may arrive relayed through `via`. Records arrival time. */
     acceptsRelayed(src: any, via: any): boolean;
-    forward(link: any, src: any, dst: any, bytes: any, e: any, key: any): void;
+    forward(directConn: any, src: any, dst: any, bytes: any, e: any, key: any): void;
     onE2ELiveness(peer: any, state: any, silence: any): void;
     /** Make-before-break: routes that carry traffic in addition to the active one. */
     extraRoutes(peer: any): any[];
-    /** A neighbor with a live link to `target`, for mesh signaling. */
+    /** A neighbor with a live direct connection to `target`, for mesh signaling. */
     relayFor(target: any): any;
     /** True when TURN may be added for the pair: TURN configured and no peer relay route. */
     canAddTurn(peerId: any): boolean;
@@ -61,10 +61,10 @@ export class Routing {
             role: any;
             kinds: any;
         }[];
-        links: {};
+        directConns: {};
         peers: {};
         budgets: {
-            links: any;
+            direct: any;
             relayed: any;
             reported: any;
         };
@@ -107,7 +107,7 @@ export type PairState = {
     lastSwitch: number;
     ownerSaidDirect: boolean;
 };
-import { NeighborTables } from "./link-state.js";
+import { NeighborTables } from "./direct-table.js";
 import { DataRelay } from "../relay/data-relay.js";
 import { MediaRelay } from "../relay/media-relay.js";
 import { RouteSelector } from "./planner.js";

@@ -1,9 +1,9 @@
 // Shared helpers for integration scenarios.
-import { Scenario, sleep, waitFor, PAIRINGS, pairings, closeBrowsers } from "./harness/scenario.js";
-import { FAST_TIMINGS } from "./harness/timing.js";
+import { Scenario, sleep, waitFor, PAIRINGS, pairings, closeBrowsers } from "./support/scenario.js";
+import { FAST_TIMINGS } from "./support/timing.js";
 
 export { sleep, waitFor, PAIRINGS, pairings, closeBrowsers };
-export { T, FAST_TIMINGS, testConfig, effective } from "./harness/timing.js";
+export { T, FAST_TIMINGS, testConfig, effective } from "./support/timing.js";
 
 /** Fast timings for recovery tests, so a scenario does not take minutes. */
 export const FAST_RECOVERY = FAST_TIMINGS
@@ -83,10 +83,10 @@ export function assertSequence(assert, got, prefix, count, start = 0, ordered = 
   else assert.deepEqual([...mine].sort(), [...expected].sort(), `set ${prefix}`);
 }
 
-/** Link session id at p for q. */
+/** Direct connection session id at p for q. */
 export async function session(s, p, q) {
   const qid = typeof q === "number" ? s.id(q) : q;
-  return (await s.eval(p, (id) => window.t.linkInfo(id), qid))?.session;
+  return (await s.eval(p, (id) => window.t.directInfo(id), qid))?.session;
 }
 
 /** Log entries of a peer whose message matches `re`. */

@@ -5,13 +5,16 @@
 export const DEFAULTS = Object.freeze({
   /** Sender sends a 1 byte beat on `ctl` after this long without sending anything. */
   HEARTBEAT_IDLE_MS: 500,
-  /** Silence after which a link or route is `slow`. Do not go below 1000 (WiFi power save). */
+  /**
+   * Silence after which a direct connection or route is `slow`. Do not go below 1000 (WiFi power
+   * save).
+   */
   SLOW_CONNECTION_MS: 1000,
-  /** Silence after which a link or route is stale and recovery starts. */
+  /** Silence after which a direct connection or route is stale and recovery starts. */
   STALE_CONNECTION_MS: 5000,
   /** Period of the receiver side silence check. */
   LIVENESS_CHECK_INTERVAL_MS: 250,
-  /** Time from ICE `connected` to `ctl` open before the link is rebuilt. */
+  /** Time from ICE `connected` to `ctl` open before the direct connection is rebuilt. */
   CHANNEL_OPEN_TIMEOUT_MS: 8000,
   /** Slow threshold while the remote side announced background mode (judged by ICE consent). */
   BACKGROUND_SLOW_MS: 12000,
@@ -22,7 +25,9 @@ export const DEFAULTS = Object.freeze({
   connectTimeoutMs: 12000,
   /** Delays before the ICE restarts of one recovery attempt; after the last, a full rebuild. */
   iceRestartBackoffMs: [1000, 3000, 6000],
-  /** Number of full rebuilds after the ICE restarts before the direct link is `unreachable`. */
+  /**
+   * Number of full rebuilds after the ICE restarts before the direct connection is `unreachable`.
+   */
   rebuildAttempts: 1,
   /** Time an ICE restart or rebuild may take to reach `connected` before the next step. */
   recoveryStepTimeoutMs: 8000,
@@ -42,9 +47,9 @@ export const DEFAULTS = Object.freeze({
   /** Candidate batching window (doc §2.4). */
   candidateBatchMs: 50,
 
-  /** Link-state table broadcast period. */
-  linkStateIntervalMs: 2000,
-  /** getStats() based link metric period. */
+  /** Direct connection table broadcast period. */
+  directTableIntervalMs: 2000,
+  /** getStats() based direct connection metric period. */
   statsIntervalMs: 1000,
   /** Relative cost improvement a route needs before it replaces the current one. */
   switchThreshold: 0.25,
@@ -56,9 +61,15 @@ export const DEFAULTS = Object.freeze({
   maxRelayLoad: 0.8,
   /** Maximum number of relay flows a peer accepts. */
   maxRelayFlows: 32,
-  /** A relay sends `route-down` for an end silent this long, before the link's own stale verdict. */
+  /**
+   * A relay sends `route-down` for an end silent this long, before the direct connection's own
+   * stale verdict.
+   */
   relayPeerDownMs: 3000,
-  /** Maximum hops (links) of a route: 1 is direct, 2 is through one relay. Only 2 is supported. */
+  /**
+   * Maximum hops (direct connections) of a route: 1 is direct, 2 is through one relay. Only 2 is
+   * supported.
+   */
   maxHops: 2,
   /** Make-before-break overlap of a planned route switch, in RTTs, bounded below. */
   switchOverlapMinMs: 50,
@@ -81,7 +92,7 @@ export const DEFAULTS = Object.freeze({
   /** Upper bound for envelope fragments, also limited by `sctp.maxMessageSize`. */
   maxFragmentBytes: 65536,
 
-  /** Audio reservation per audio flow in the per-link budget (bits per second). */
+  /** Audio reservation per audio flow in the per direct connection budget (bits per second). */
   audioReserveBps: 64000,
   /** Fraction of `availableOutgoingBitrate` distributed as budgets. */
   bweHeadroom: 0.9,
@@ -120,7 +131,7 @@ export const DEFAULTS = Object.freeze({
   stableTracks: false,
   /** Documented test target, not a hard limit. */
   maxPeers: 16,
-  /** Test-only hooks, see the test harness. */
+  /** Test-only hooks, see the integration tests. */
   testHooks: null,
 });
 

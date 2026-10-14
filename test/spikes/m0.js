@@ -1,6 +1,6 @@
 // Runs the M0 feasibility spikes in Chromium and Firefox and prints the results as JSON.
-import { startHttp } from "../integration/harness/http.js";
-import { openPage, closeBrowsers } from "../integration/harness/browsers.js";
+import { startHttp } from "../integration/support/http.js";
+import { openPage, closeBrowsers } from "../integration/support/browsers.js";
 
 const http = await startHttp();
 for (const name of process.argv.slice(2).length ? process.argv.slice(2) : ["chromium", "firefox"]) {

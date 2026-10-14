@@ -1,7 +1,7 @@
 # M0 Feasibility Report
 
 Environment: Playwright 1.64 on Linux, HeadlessChrome 156 and Firefox 157, fake media devices.
-Spikes: `test/spikes/m0.js` (in-page) and the integration harness (`test/integration`).
+Spikes: `test/spikes/m0.js` (in-page) and the integration tests (`test/integration`).
 Safari, iOS and real phones are not available in this environment; their items stay on the
 manual test matrix (plan section 14.7).
 
@@ -17,9 +17,9 @@ manual test matrix (plan section 14.7).
 | `createEncodedStreams` | present | absent | |
 | `MediaStreamTrackGenerator` / `VideoTrackGenerator` | first only | neither | `stableTracks` is Chromium-only; the stable stream works everywhere |
 | Adding and removing tracks of a playing `<video>`'s `srcObject` | new track renders after 5 ms | the element keeps playing but never renders the new track; assigning `srcObject` again renders it after 13 ms (`test/spikes/swap.html`) | stable streams dispatch `realtic-trackswapped`; `attachMedia(element, stream)` reassigns `srcObject` on each swap; Safari manual |
-| Netem proxy with candidate rewriting | works | works after binding the proxy socket on the candidate's own interface address (Firefox does not pair a non-loopback local candidate with a loopback remote one) | harness binds per real address |
+| Netem proxy with candidate rewriting | works | works after binding the proxy socket on the candidate's own interface address (Firefox does not pair a non-loopback local candidate with a loopback remote one) | the netem proxy binds per real address |
 | Packet class filter (STUN passes, DTLS dropped) | ICE connects, data channel never opens | same | DIR-6 as planned |
-| Consent statistics of a frozen hidden tab (`Page.setWebLifecycleState frozen`) | candidate pair timestamp keeps advancing, link judged alive for 15 s | not testable (no CDP) | background mode as planned |
+| Consent statistics of a frozen hidden tab (`Page.setWebLifecycleState frozen`) | candidate pair timestamp keeps advancing, direct connection judged alive for 15 s | not testable (no CDP) | background mode as planned |
 | Network Information API | present | absent | srflx probe everywhere, `change` event where present |
 | TURN allocations through `turn-server` | work | work; Firefox pairs only relay with relay candidates on loopback, which needs the server's `allowLoopback` | REL-13 as planned |
 

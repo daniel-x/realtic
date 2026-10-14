@@ -5,8 +5,8 @@ import { encode, split, aad, FLAG, TYPE, Reassembler, headerLength } from "./tra
 import { encrypt, decrypt, OVERHEAD } from "./crypto/e2e.js";
 import { LivenessMonitor } from "./liveness/monitor.js";
 import { SerialQueue } from "./signaling/queue.js";
-import { RecoverySchedule } from "./link/ice-restart.js";
-import { directPeerConnectionClass } from "./link/direct-peer-connection.js";
+import { RecoverySchedule } from "./direct/ice-restart.js";
+import { directPeerConnectionClass } from "./direct/direct-peer-connection.js";
 import { readStats, pairDump, summarizeDump } from "./diag/pair-dump.js";
 import { failureHint } from "./diag/hints.js";
 import { sleepReaction } from "./liveness/sleep.js";
@@ -15,11 +15,11 @@ const LOG_PART_BYTES = 16384;
 const RESTART_REQUEST_GAP_MS = 2000;
 
 /**
- * The connection to one other peer of the group, kept up as long as the peer is known (plan
- * section 3). It is direct, wrapping the RTCPeerConnection of its direct link, or routed through a
- * relay, using the relay's direct link. Finding routes, keeping standby routes warm and switching
- * routes happen inside; the object survives link rebuilds, ICE restarts and route switches, so app
- * state bound to it never has to be rebuilt (doc §3.8).
+ * The connection to one other peer of the group, kept up as long as the peer is known (plan section
+ * 3). It is direct, wrapping the RTCPeerConnection of its direct connection, or routed through a
+ * relay, using the relay's direct connection. Finding routes, keeping standby routes warm and
+ * switching routes happen inside; the object survives direct connection rebuilds, ICE restarts and
+ * route switches, so app state bound to it never has to be rebuilt (doc §3.8).
  *
  * Events: `statechange` (state, reason), `routechange` (route), `channel` (RalDataChannel),
  * `track` ({track, stream, tag, origin, kind}), `trackreplaced` ({track, oldTrack, stream, tag}),
@@ -75,7 +75,7 @@ export class RalPeerConnection extends Emitter {
     this.id = id;
     this.impolite = isImpolite(group.selfId, id);
     this.l = group.log.scope("routing", { peer: id });
-    this.#ll = group.log.scope("link", { peer: id });
+    this.#ll = group.log.scope("direct", { peer: id });
     this.#reassembler = new Reassembler(group.clock);
     this.session = new Session({
       impolite: this.impolite,
@@ -274,31 +274,31 @@ export class RalPeerConnection extends Emitter {
   }
 
   #sendOn(route, e, key) {
-    const link = route.kind === "direct" ? this.#directConn : this.#group.directConns.get(route.via);
-    if (!link || !link.ralUsable) return false;
+    const firstHop = route.kind === "direct" ? this.#directConn : this.#group.directConns.get(route.via);
+    if (!firstHop || !firstHop.ralUsable) return false;
     const encrypted = route.kind === "relay";
     if (encrypted && !this.pairKey) return false;
     const flow = `${this.id}:${e.channelId}`;
-    const dstIdx = route.kind === "direct" ? 1 : this.#group.localIndex(link, this.id);
+    const dstIdx = route.kind === "direct" ? 1 : this.#group.localIndex(firstHop, this.id);
     const flags = encrypted ? FLAG.ENCRYPTED : 0;
     const lifetimeFlag = e.lifetime !== undefined ? FLAG.LIFETIME : 0;
-    const mtu = Math.min(link.ralMaxMessageSize, this.#group.config.maxFragmentBytes, this.#group.routing.pathMessageSize(route));
+    const mtu = Math.min(firstHop.ralMaxMessageSize, this.#group.config.maxFragmentBytes, this.#group.routing.pathMessageSize(route));
     const room = mtu - headerLength(FLAG.FRAGMENTED | lifetimeFlag) - (encrypted ? OVERHEAD : 0);
     const parts = split(e.payload, Math.max(256, room));
     const total = e.payload.length + parts.length * 64;
-    if (link.ralQueuedBytes(key, flow) + total > this.#group.config.relayQueueBytes) return false;
+    if (firstHop.ralQueuedBytes(key, flow) + total > this.#group.config.relayQueueBytes) return false;
     const base = { version: this.#group.protocol.major, type: e.type, flags, srcIdx: 0, dstIdx, channelId: e.channelId, seq: e.seq, lifetime: e.lifetime };
     const fragmented = parts.length > 1;
     const envelopes = parts.map((payload, i) => (fragmented ? { ...base, fragIndex: i, fragCount: parts.length, payload } : { ...base, payload }));
     if (!encrypted) {
-      for (const env of envelopes) link.ralSendEnvelope(key, flow, encode(env));
+      for (const env of envelopes) firstHop.ralSendEnvelope(key, flow, encode(env));
       return true;
     }
     const keyRef = this.pairKey;
     this.#encChain = this.#encChain.then(async () => {
       for (const env of envelopes) {
         const ct = await encrypt(keyRef, aad(env), env.payload);
-        link.ralSendEnvelope(key, flow, encode({ ...env, payload: ct }));
+        firstHop.ralSendEnvelope(key, flow, encode({ ...env, payload: ct }));
       }
     }).catch((error) => this.l.warn("encryption failed", { error: error.message }));
     return true;

@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { RalPollingSignaling } from "../../src/signaling/polling.js";
 import { createSignaling } from "../../src/signaling/create.js";
 import { RalWebSocketSignaling } from "../../src/signaling/websocket.js";
-import { createPhpServer } from "../integration/harness/php-server.js";
+import { createPhpServer } from "../integration/support/php-server.js";
 
 const php = process.env.REALTIC_PHP ?? "php";
 const hasPhp = spawnSync(php, ["-v"]).status === 0;

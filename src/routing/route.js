@@ -1,5 +1,5 @@
 import { candidates, RouteSelector, chooseStandby, routeKey, relayLoad, usable } from "./planner.js";
-import { NeighborTables, buildLinkState } from "./link-state.js";
+import { NeighborTables, buildDirectTable } from "./direct-table.js";
 import { DataRelay } from "../relay/data-relay.js";
 import { MediaRelay } from "../relay/media-relay.js";
 import { randomId } from "../util/ids.js";
@@ -9,7 +9,7 @@ const FLOW_REQUEST_TIMEOUT_MS = 5000;
 const REJECT_HOLD_MS = 10000;
 
 const relayRoute = (f) => ({ kind: "relay", via: f.via, flow: f.flow });
-const linkLiveness = (link) => (link.ralUsable ? (link.ralHealthy ? "ok" : "slow") : "down");
+const directLiveness = (directConn) => (directConn.ralUsable ? (directConn.ralHealthy ? "ok" : "slow") : "down");
 
 /**
  * Pair route state, on both ends of a pair.
@@ -33,7 +33,7 @@ export class Routing {
   pairs = new Map();
   neighbors = new NeighborTables();
   #group;
-  #lastLinkState = 0;
+  #lastDirectTable = 0;
   #beatTimer = null;
   #load = 0;
   #lastStateFrom = new Map();
@@ -100,100 +100,100 @@ export class Routing {
     }
   }
 
-  linkRebuilt(peerId) {
-    this.#update(peerId, "link rebuilt");
+  onDirectRebuilt(peerId) {
+    this.#update(peerId, "direct connection rebuilt");
   }
 
-  linkOpen(link) {
-    this.#sendLinkState(link);
-    this.mediaRelay.resendSubscriptions(link);
-    this.#updateAll("link open " + link.ralRemoteId);
+  onDirectOpen(directConn) {
+    this.#sendDirectTable(directConn);
+    this.mediaRelay.resendSubscriptions(directConn);
+    this.#updateAll("direct connection open " + directConn.ralRemoteId);
   }
 
-  linkState(peerId, state, reason) {
+  onDirectState(peerId, state, reason) {
     const verdict = state === "recovering" || state === "unreachable" || state === "closed" ? "stale" : state === "slow" ? "slow" : "ok";
     this.relay.endChanged(peerId, verdict);
-    this.#broadcastLinkState();
-    this.#updateAll(`link ${peerId} ${state}: ${reason}`);
+    this.#broadcastDirectTable();
+    this.#updateAll(`direct connection ${peerId} ${state}: ${reason}`);
   }
 
-  onMetrics(link, m, stats) {
+  onMetrics(directConn, m, stats) {
     this.#computeLoad();
-    this.mediaRelay.onMetrics(link, m, stats);
+    this.mediaRelay.onMetrics(directConn, m, stats);
   }
 
   tick() {
     const now = this.#group.clock.now();
     this.neighbors.expire(now, NEIGHBOR_TABLE_MAX_AGE_MS);
-    if (now - this.#lastLinkState >= this.#group.config.linkStateIntervalMs) this.#broadcastLinkState();
+    if (now - this.#lastDirectTable >= this.#group.config.directTableIntervalMs) this.#broadcastDirectTable();
     this.#updateAll("tick");
     this.mediaRelay.tick();
   }
 
-  // Link state exchange -------------------------------------------------------------------------
+  // Direct connection table exchange ------------------------------------------------------------
 
   #computeLoad() {
     let uplink = 0;
     let cpu = false;
-    for (const link of this.#group.directConns.values()) {
-      if (!link.ralCtlOpen) continue;
-      uplink += link.ralMetrics.bitrate ?? this.#group.config.bweFallbackBps;
-      if (link.ralMetrics.cpuLimited) cpu = true;
+    for (const directConn of this.#group.directConns.values()) {
+      if (!directConn.ralCtlOpen) continue;
+      uplink += directConn.ralMetrics.bitrate ?? this.#group.config.bweFallbackBps;
+      if (directConn.ralMetrics.cpuLimited) cpu = true;
     }
     const relayed = this.relay.rate * 8 + this.mediaRelay.relayedBps();
     this.#load = relayLoad(relayed, uplink, cpu);
   }
 
-  #broadcastLinkState() {
-    this.#lastLinkState = this.#group.clock.now();
-    for (const link of this.#group.directConns.values()) if (link.ralCtlOpen) this.#sendLinkState(link);
+  #broadcastDirectTable() {
+    this.#lastDirectTable = this.#group.clock.now();
+    for (const directConn of this.#group.directConns.values()) if (directConn.ralCtlOpen) this.#sendDirectTable(directConn);
   }
 
-  #sendLinkState(link) {
-    const msg = buildLinkState(this.#group, this.#load);
-    const last = this.#lastStateFrom.get(link.ralRemoteId);
+  #sendDirectTable(directConn) {
+    const msg = buildDirectTable(this.#group, this.#load);
+    const last = this.#lastStateFrom.get(directConn.ralRemoteId);
     if (last) msg.echo = { ts: last.ts, held: Math.round(this.#group.clock.now() - last.at) };
-    link.ralSendCtl(msg);
+    directConn.ralSendCtl(msg);
   }
 
   // Control messages ------------------------------------------------------------------------------
 
-  onCtl(link, msg) {
+  onCtl(directConn, msg) {
     const g = this.#group;
     switch (msg.t) {
-      case "link-state":
-        this.neighbors.update(link.ralRemoteId, msg, g.clock.now());
-        if (typeof msg.ts === "number") this.#lastStateFrom.set(link.ralRemoteId, { ts: msg.ts, at: g.clock.now() });
-        if (msg.echo && typeof msg.echo.ts === "number") link.ralNoteControlRtt(g.clock.now() - msg.echo.ts - (msg.echo.held || 0));
+      case "direct-table":
+        this.neighbors.update(directConn.ralRemoteId, msg, g.clock.now());
+        if (typeof msg.ts === "number") this.#lastStateFrom.set(directConn.ralRemoteId, { ts: msg.ts, at: g.clock.now() });
+        if (msg.echo && typeof msg.echo.ts === "number") directConn.ralNoteControlRtt(g.clock.now() - msg.echo.ts - (msg.echo.held || 0));
         return;
       case "relay-request":
-        this.relay.onRequest(link, msg);
+        this.relay.onRequest(directConn, msg);
         return;
       case "relay-accept":
-        return this.#onAccept(link, msg);
+        return this.#onAccept(directConn, msg);
       case "relay-reject":
-        return this.#onReject(link, msg);
+        return this.#onReject(directConn, msg);
       case "relay-open":
-        return this.#onRelayOpen(link, msg);
+        return this.#onRelayOpen(directConn, msg);
       case "relay-close":
-        if (this.relay.flows.size) this.relay.onClose(link, msg);
-        return this.#onRelayClose(link, msg);
+        if (this.relay.flows.size) this.relay.onClose(directConn, msg);
+        return this.#onRelayClose(directConn, msg);
       case "standby-activate":
-        if (link.ralRemoteId === msg.origin) {
-          this.relay.onActivate(link, msg);
+        if (directConn.ralRemoteId === msg.origin) {
+          this.relay.onActivate(directConn, msg);
           return;
         }
-        return this.#onStandbyActivate(link, msg);
+        return this.#onStandbyActivate(directConn, msg);
       case "route-down":
-        return this.#onRouteDown(link, msg);
+        return this.#onRouteDown(directConn, msg);
       case "route-slow":
-        return this.#onRouteSlow(link, msg);
+        return this.#onRouteSlow(directConn, msg);
       case "route-use":
-        return this.#onRouteUse(link, msg);
+        return this.#onRouteUse(directConn, msg);
       case "bwe":
-        return this.mediaRelay.onBwe(link, msg);
+        return this.mediaRelay.onBwe(directConn, msg);
       default:
-        this.l.debug("unknown ctl message", { t: msg.t, from: link.ralRemoteId });
+        this.l.debug("unknown ctl message", { t: msg.t, from: directConn.ralRemoteId });
     }
   }
 
@@ -214,13 +214,13 @@ export class Routing {
     const p = this.#pair(peerId);
     const existing = this.#flowVia(p, via);
     if (existing) return existing;
-    const link = this.#group.directConns.get(via);
-    if (!link?.ralUsable) return null;
+    const directConn = this.#group.directConns.get(via);
+    if (!directConn?.ralUsable) return null;
     const flow = { flow: randomId(8), via, role, state: "requested", since: this.#group.clock.now(), owner: true };
     p.flows.set(flow.flow, flow);
-    this.#group.localIndex(link, peerId);
+    this.#group.localIndex(directConn, peerId);
     const kinds = this.mediaRelay.kindsFor(peerId);
-    link.ralSendCtl({ t: "relay-request", flow: flow.flow, origin: this.#group.selfId, target: peerId, role, kinds });
+    directConn.ralSendCtl({ t: "relay-request", flow: flow.flow, origin: this.#group.selfId, target: peerId, role, kinds });
     this.l.info("relay request", { peer: peerId, via, role, flow: flow.flow });
     return flow;
   }
@@ -252,9 +252,9 @@ export class Routing {
     return [];
   }
 
-  #onAccept(link, msg) {
+  #onAccept(directConn, msg) {
     const [peerId, , f] = this.#findFlow(msg.flow);
-    if (!f || f.via !== link.ralRemoteId) return;
+    if (!f || f.via !== directConn.ralRemoteId) return;
     f.state = "open";
     f.since = this.#group.clock.now();
     this.l.info("relay accepted", { peer: peerId, via: f.via, role: f.role });
@@ -263,25 +263,25 @@ export class Routing {
     this.#update(peerId, "relay accepted");
   }
 
-  #onReject(link, msg) {
+  #onReject(directConn, msg) {
     const [peerId, p, f] = this.#findFlow(msg.flow);
-    if (!f || f.via !== link.ralRemoteId) return;
+    if (!f || f.via !== directConn.ralRemoteId) return;
     p.flows.delete(f.flow);
     p.rejected.set(f.via, this.#group.clock.now());
     this.l.info("relay rejected", { peer: peerId, via: f.via, reason: msg.reason });
     this.#update(peerId, "relay rejected");
   }
 
-  #onRelayOpen(link, msg) {
+  #onRelayOpen(directConn, msg) {
     const g = this.#group;
     const origin = msg.origin;
     if (!g.connections.has(origin) || !g.helloDone(origin)) {
-      link.ralSendCtl({ t: "relay-close", flow: msg.flow, origin });
+      directConn.ralSendCtl({ t: "relay-close", flow: msg.flow, origin });
       return;
     }
     const p = this.#pair(origin);
     const existing = p.flows.get(msg.flow);
-    const f = existing ?? { flow: msg.flow, via: link.ralRemoteId, role: "standby", state: "open", since: g.clock.now(), owner: false };
+    const f = existing ?? { flow: msg.flow, via: directConn.ralRemoteId, role: "standby", state: "open", since: g.clock.now(), owner: false };
     f.role = msg.role === "active" ? "active" : "standby";
     f.state = "open";
     p.flows.set(f.flow, f);
@@ -297,18 +297,18 @@ export class Routing {
     this.#update(origin, "relay open");
   }
 
-  #onRelayClose(link, msg) {
+  #onRelayClose(directConn, msg) {
     const [peerId, , f] = this.#findFlow(msg.flow);
-    if (!f || f.via !== link.ralRemoteId) return;
+    if (!f || f.via !== directConn.ralRemoteId) return;
     this.pairs.get(peerId).flows.delete(f.flow);
     this.l.info("relay closed", { peer: peerId, via: f.via });
     this.#group.mediaChanged();
     this.#update(peerId, "relay closed");
   }
 
-  #onStandbyActivate(link, msg) {
+  #onStandbyActivate(directConn, msg) {
     const [peerId, p, f] = this.#findFlow(msg.flow);
-    if (!f || f.via !== link.ralRemoteId) return;
+    if (!f || f.via !== directConn.ralRemoteId) return;
     for (const other of p.flows.values()) if (other.role === "active") other.role = "standby";
     f.role = "active";
     p.ownerSaidDirect = false;
@@ -317,31 +317,31 @@ export class Routing {
     this.#group.mediaChanged();
   }
 
-  #onRouteDown(link, msg) {
+  #onRouteDown(directConn, msg) {
     const peerId = msg.origin;
     const p = this.pairs.get(peerId);
     if (!p) return;
-    this.l.info("route-down", { peer: peerId, via: link.ralRemoteId });
+    this.l.info("route-down", { peer: peerId, via: directConn.ralRemoteId });
     let changed = false;
     for (const f of p.flows.values()) {
-      if (f.via !== link.ralRemoteId) continue;
+      if (f.via !== directConn.ralRemoteId) continue;
       f.down = true;
       changed = true;
     }
-    if (changed) this.#failover(peerId, `route-down from ${link.ralRemoteId}`, link.ralRemoteId);
+    if (changed) this.#failover(peerId, `route-down from ${directConn.ralRemoteId}`, directConn.ralRemoteId);
   }
 
-  #onRouteSlow(link, msg) {
+  #onRouteSlow(directConn, msg) {
     const peerId = msg.origin;
     const peer = this.#group.connections.get(peerId);
     const r = peer?.routeInfo;
-    if (r?.kind !== "relay" || r.via !== link.ralRemoteId) return;
-    this.l.info("route-slow", { peer: peerId, via: link.ralRemoteId });
+    if (r?.kind !== "relay" || r.via !== directConn.ralRemoteId) return;
+    this.l.info("route-slow", { peer: peerId, via: directConn.ralRemoteId });
     this.#earlySwitch(peerId, "route-slow");
   }
 
-  #onRouteUse(link, msg, fromPeer) {
-    const peerId = fromPeer ?? link?.ralRemoteId;
+  #onRouteUse(directConn, msg, fromPeer) {
+    const peerId = fromPeer ?? directConn?.ralRemoteId;
     const p = this.pairs.get(peerId);
     if (!p || this.#owner(peerId)) return;
     if (msg.kind === "direct") {
@@ -363,8 +363,8 @@ export class Routing {
     return false;
   }
 
-  forward(link, src, dst, bytes, e, key) {
-    this.relay.forward(link, src, dst, bytes, e, key);
+  forward(directConn, src, dst, bytes, e, key) {
+    this.relay.forward(directConn, src, dst, bytes, e, key);
   }
 
   // Liveness of relayed routes ------------------------------------------------------------------
@@ -464,19 +464,19 @@ export class Routing {
 
   #candidates(peerId) {
     const g = this.#group;
-    const link = g.directConns.get(peerId);
-    const direct = link ? { ...link.ralMetrics, state: linkLiveness(link), candidateType: link.ralViaTurn ? "relay" : link.ralMetrics.candidateType } : undefined;
+    const directConn = g.directConns.get(peerId);
+    const direct = directConn ? { ...directConn.ralMetrics, state: directLiveness(directConn), candidateType: directConn.ralViaTurn ? "relay" : directConn.ralMetrics.candidateType } : undefined;
     const neighbors = new Map();
     const now = g.clock.now();
     const p = this.pairs.get(peerId);
     for (const via of this.neighbors.keys()) {
       if (via === peerId) continue;
-      const vlink = g.directConns.get(via);
+      const viaConn = g.directConns.get(via);
       const t = this.neighbors.get(via);
-      if (!vlink || !t) continue;
+      if (!viaConn || !t) continue;
       if (p?.rejected.has(via) && now - p.rejected.get(via) < REJECT_HOLD_MS) continue;
       neighbors.set(via, {
-        link: { ...vlink.ralMetrics, state: linkLiveness(vlink) },
+        toNeighbor: { ...viaConn.ralMetrics, state: directLiveness(viaConn) },
         table: t.table,
         load: t.load,
         relay: t.relay,
@@ -550,8 +550,8 @@ export class Routing {
     }
     if (best.kind === "direct") {
       if (current?.kind !== "direct") {
-        const link = g.directConns.get(peerId);
-        link?.ralSendCtl({ t: "route-use", kind: "direct" });
+        const directConn = g.directConns.get(peerId);
+        directConn?.ralSendCtl({ t: "route-use", kind: "direct" });
         this.#use(peerId, { kind: "direct" }, `planner: ${reason}`);
       }
       this.#tidyFlows(peerId, p, best, list);
@@ -599,24 +599,24 @@ export class Routing {
     const g = this.#group;
     const peer = g.connections.get(peerId);
     const current = peer.routeInfo;
-    const link = g.directConns.get(peerId);
+    const directConn = g.directConns.get(peerId);
     if (current?.kind === "relay") {
       const f = p.flows.get(current.flow);
       if (f && !f.down && g.directConns.get(f.via)?.ralUsable) return;
       const standby = this.#standbyOf(peerId);
       if (standby) return this.#use(peerId, relayRoute(standby), "active relay down (follower)");
-      if (link?.ralUsable) return this.#use(peerId, { kind: "direct" }, "relay down, direct usable");
+      if (directConn?.ralUsable) return this.#use(peerId, { kind: "direct" }, "relay down, direct usable");
       peer.setRoute(null, "relay down");
       return;
     }
-    if (current?.kind === "direct" && link?.ralUsable) {
+    if (current?.kind === "direct" && directConn?.ralUsable) {
       if (!p.ownerSaidDirect) {
         const active = [...p.flows.values()].find((f) => f.role === "active" && f.state === "open" && !f.down);
         if (active) this.#use(peerId, relayRoute(active), "owner uses relay");
       }
       return;
     }
-    if (link?.ralUsable && (p.ownerSaidDirect || ![...p.flows.values()].some((f) => f.state === "open" && !f.down))) {
+    if (directConn?.ralUsable && (p.ownerSaidDirect || ![...p.flows.values()].some((f) => f.state === "open" && !f.down))) {
       return this.#use(peerId, { kind: "direct" }, "direct usable");
     }
     const f = [...p.flows.values()].find((x) => x.role === "active" && x.state === "open" && !x.down && g.directConns.get(x.via)?.ralUsable) ?? this.#standbyOf(peerId);
@@ -658,10 +658,10 @@ export class Routing {
   #refreshState(peer, p) {
     const g = this.#group;
     const r = peer.routeInfo;
-    const link = g.directConns.get(peer.id);
-    if (r?.kind === "direct" && link) {
-      if (link.ralHealthy) return peer.setState("connected", "direct");
-      if (link.ralUsable) return peer.setState("slow", "direct link slow");
+    const directConn = g.directConns.get(peer.id);
+    if (r?.kind === "direct" && directConn) {
+      if (directConn.ralHealthy) return peer.setState("connected", "direct");
+      if (directConn.ralUsable) return peer.setState("slow", "direct connection slow");
     }
     if (r?.kind === "relay") {
       const e2e = peer.e2e.state;
@@ -677,17 +677,17 @@ export class Routing {
       peer.hint = peer.directHint;
       return peer.setState("unreachable", peer.directError ?? "no route");
     }
-    peer.setState(peer.everConnected ? "reconnecting" : "connecting", peer.directStarted ? `link ${peer.directState}` : "no link");
+    peer.setState(peer.everConnected ? "reconnecting" : "connecting", peer.directStarted ? `direct connection ${peer.directState}` : "no direct connection");
   }
 
   // Queries -------------------------------------------------------------------------------------
 
-  /** A neighbor with a live link to `target`, for mesh signaling. */
+  /** A neighbor with a live direct connection to `target`, for mesh signaling. */
   relayFor(target) {
     for (const via of this.neighbors.keys()) {
       if (via === target) continue;
-      const link = this.#group.directConns.get(via);
-      if (link?.ralHealthy && usable(this.neighbors.entry(via, target))) return via;
+      const directConn = this.#group.directConns.get(via);
+      if (directConn?.ralHealthy && usable(this.neighbors.entry(via, target))) return via;
     }
     return undefined;
   }
@@ -714,10 +714,10 @@ export class Routing {
   /** Statistics for `group.getStats()`. */
   stats() {
     const g = this.#group;
-    const links = {};
+    const directConns = {};
     for (const [id, c] of g.connections) {
       const d = c.directConn;
-      if (c.directStarted) links[id] = { state: c.directState, liveness: d?.ralLiveness, session: d?.ralSession, metrics: d?.ralMetrics, bufferedAmount: d?.ralBufferedAmount ?? 0 };
+      if (c.directStarted) directConns[id] = { state: c.directState, liveness: d?.ralLiveness, session: d?.ralSession, metrics: d?.ralMetrics, bufferedAmount: d?.ralBufferedAmount ?? 0 };
     }
     const peers = {};
     for (const [id, peer] of g.connections) {
@@ -730,7 +730,7 @@ export class Routing {
         unackedBytes: peer.session.unackedBytes,
       };
     }
-    return { selfId: g.selfId, load: this.#load, relayFlows: this.relay.list(), links, peers, budgets: this.mediaRelay.budgetsSnapshot() };
+    return { selfId: g.selfId, load: this.#load, relayFlows: this.relay.list(), directConns, peers, budgets: this.mediaRelay.budgetsSnapshot() };
   }
 
   close() {

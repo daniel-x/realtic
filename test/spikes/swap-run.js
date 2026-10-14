@@ -1,5 +1,5 @@
-import { startHttp } from "../integration/harness/http.js";
-import { openPage, closeBrowsers } from "../integration/harness/browsers.js";
+import { startHttp } from "../integration/support/http.js";
+import { openPage, closeBrowsers } from "../integration/support/browsers.js";
 const http = await startHttp();
 for (const b of ["chromium", "firefox"]) {
   const p = await openPage(b, `${http.url}/test/spikes/swap.html`);

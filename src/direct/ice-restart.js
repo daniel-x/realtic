@@ -1,6 +1,6 @@
 /**
- * Recovery schedule of a direct link (plan section 5, doc §4.5): ICE restarts with backoff, then
- * full rebuilds, then `unreachable` with a background re-probe at growing intervals.
+ * Recovery schedule of a direct connection (plan section 5, doc §4.5): ICE restarts with backoff,
+ * then full rebuilds, then `unreachable` with a background re-probe at growing intervals.
  *
  * Pure scheduling: the owner supplies the actions and reports health. `run()` resolves with
  * `"recovered"`, `"unreachable"` or `"cancelled"`.
@@ -28,7 +28,7 @@ export class RecoverySchedule {
     Object.assign(this, options);
   }
 
-  /** Reports that the link became healthy. */
+  /** Reports that the direct connection became healthy. */
   noteHealthy() {
     for (const w of this.#healthyWaiters) w(true);
     this.#healthyWaiters.clear();
@@ -49,7 +49,7 @@ export class RecoverySchedule {
     });
   }
 
-  /** Runs the schedule until the link is healthy or all steps are used. */
+  /** Runs the schedule until the direct connection is healthy or all steps are used. */
   async run() {
     if (this.running) return "running";
     this.running = true;

@@ -12,11 +12,11 @@ export const RELAYABLE = new Set(["cand", "renegotiate", "bye"]);
  * Sends signaling over the mesh first and the server second (plan section 4.4, decision D2).
  *
  * - `hello` always goes through the server.
- * - `offer`/`answer` go over the direct link they renegotiate when its `ctl` is open, else through
- *   the server.
- * - `cand`, `renegotiate`, `bye` go over the direct link, else through a relay neighbor, else
+ * - `offer`/`answer` go over the direct connection they renegotiate when its `ctl` is open, else
  *   through the server.
- * - While a direct link is open but not healthy, the message also goes through the server.
+ * - `cand`, `renegotiate`, `bye` go over the direct connection, else through a relay neighbor, else
+ *   through the server.
+ * - While a direct connection is open but not healthy, the message also goes through the server.
  *   Receivers drop duplicates by message id.
  */
 export class SignalingRouter {
@@ -24,15 +24,15 @@ export class SignalingRouter {
    * @param {object} options
    * @param {string} options.selfId
    * @param {() => import("./adapter.js").SignalingAdapter} options.adapter
-   * @param {(id: string) => import("../link/direct-peer-connection.js").RalDirectPeerConnection | undefined} options.link
-   * @param {(target: string) => string | undefined} options.relayFor neighbor that has a live link to target
+   * @param {(id: string) => import("../direct/direct-peer-connection.js").RalDirectPeerConnection | undefined} options.directConn
+   * @param {(target: string) => string | undefined} options.relayFor neighbor that has a live direct connection to target
    * @param {ReturnType<import("../diag/log.js").RalLog["scope"]>} options.log
    * @param {{outgoingSignal?: (to: string, msg: object) => (object | Promise<object>)}} [options.hooks]
    */
-  constructor({ selfId, adapter, link, relayFor, log, hooks }) {
+  constructor({ selfId, adapter, directConn, relayFor, log, hooks }) {
     this.selfId = selfId;
     this.adapter = adapter;
-    this.link = link;
+    this.directConn = directConn;
     this.relayFor = relayFor;
     this.l = log;
     this.hooks = hooks;
@@ -57,14 +57,14 @@ export class SignalingRouter {
     const paths = serverOnly ? ["server"] : this.#paths(to, full.t);
     for (const path of paths) {
       if (path === "server") this.#toServer(to, full);
-      else this.link(path)?.ralSendCtl({ t: "sig", msg: full });
+      else this.directConn(path)?.ralSendCtl({ t: "sig", msg: full });
     }
     this.l.debug("signal sent", { t: full.t, to, id: full.id, size: full.sdp?.length ?? 0, paths });
   }
 
   #paths(to, t) {
     if (SERVER_ONLY.has(t)) return ["server"];
-    const direct = this.link(to);
+    const direct = this.directConn(to);
     if (direct?.ralCtlOpen) {
       if (direct.ralHealthy && direct.ralConnection.directState === "connected") return BOTH_WHEN_UP.has(t) ? [to, "server"] : [to];
       if (direct.ralUsable) return [to, "server"];

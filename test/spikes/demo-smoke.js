@@ -1,8 +1,8 @@
 // Opens both demos in Chromium and Firefox against both reference servers and prints what the
 // pages show. Usage: node test/spikes/demo-smoke.js
 import { createSignalingServer } from "../../server/node/server.js";
-import { createPhpServer } from "../integration/harness/php-server.js";
-import { openPage, closeBrowsers } from "../integration/harness/browsers.js";
+import { createPhpServer } from "../integration/support/php-server.js";
+import { openPage, closeBrowsers } from "../integration/support/browsers.js";
 
 for (const kind of ["php", "node"]) {
   const s = kind === "php" ? await createPhpServer() : await createSignalingServer({});

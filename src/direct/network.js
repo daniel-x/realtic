@@ -14,7 +14,7 @@ export class NetworkWatcher {
 
   constructor(group) {
     this.#group = group;
-    this.l = group.log.scope("link");
+    this.l = group.log.scope("network");
   }
 
   #stunServers() {

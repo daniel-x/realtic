@@ -70,17 +70,17 @@ JSON `{ t, ...fields }`:
 | `t` | Fields | Meaning |
 | --- | ------ | ------- |
 | `index-map` | `map: { [idx]: peerId }, full?` | indices the sender uses in envelope headers; 0 is the sender, 1 the receiver |
-| `link-state` | `links: [{ peer, state, rtt, bitrate, loss, candidateType, mms }], load, relay, mediaRelay, ts, echo?: { ts, held }` | the sender's link table, every 2 s and on change; `echo` returns the last received `ts` and how long it was held, for a round trip time |
-| `liveness` | `state` | the sender's verdict about this link (`ok`, `slow`, `stale`) |
+| `direct-table` | `conns: [{ peer, state, rtt, bitrate, loss, candidateType, mms }], load, relay, mediaRelay, ts, echo?: { ts, held }` | the sender's direct connection table, every 2 s and on change; `echo` returns the last received `ts` and how long it was held, for a round trip time |
+| `liveness` | `state` | the sender's verdict about this direct connection (`ok`, `slow`, `stale`) |
 | `relay-request` | `flow, origin, target, role, kinds` | route owner asks a neighbor to relay |
 | `relay-accept` | `flow` | |
 | `relay-reject` | `flow, reason` | |
 | `relay-open` | `flow, origin, role, kinds` | relay tells the target end about a flow |
 | `relay-close` | `flow, origin` | either end or the relay ends a flow |
 | `standby-activate` | `flow, origin` | the standby becomes the active relay |
-| `route-down` | `origin, target` | relay: its link to `origin` is dead |
-| `route-slow` | `origin, target` | relay: its link to `origin` is slow |
-| `route-use` | `kind: "direct"` | the route owner switched the pair to the direct link |
+| `route-down` | `origin, target` | relay: its direct connection to `origin` is dead |
+| `route-slow` | `origin, target` | relay: its direct connection to `origin` is slow |
+| `route-use` | `kind: "direct"` | the route owner switched the pair to the direct connection |
 | `bg`, `fg` | none | the sender's page went to the background or came back |
 | `transport-open` | `id, mode` | impolite side created a partial reliability transport |
 | `transport-ready` | `id, mode` | polite side created its end; the impolite side starts sending on it |
@@ -94,11 +94,11 @@ JSON `{ t, ...fields }`:
 ## 3. Mesh Signaling Rules
 
 - `hello` always goes through the server: it carries the end to end key.
-- `offer` and `answer` go over the direct link they renegotiate when its `ctl` is open, else
+- `offer` and `answer` go over the direct connection they renegotiate when its `ctl` is open, else
   through the server. They never pass a relay, because they carry DTLS fingerprints.
-- `cand`, `renegotiate`, `bye` go over the direct link, else through a relay neighbor that has a
-  live link to the target, else through the server.
-- While a direct link is open but not healthy, messages also go through the server.
+- `cand`, `renegotiate`, `bye` go over the direct connection, else through a relay neighbor that
+  has a live direct connection to the target, else through the server.
+- While a direct connection is open but not healthy, messages also go through the server.
 - A relay forwards a `sig` only when `msg.from` is the neighbor it came from, the type is
   relayable, and both ends completed `hello` with the relay.
 
@@ -111,7 +111,7 @@ Envelopes travel on `rel`, `unrel` and the partial reliability channels. Binary,
 | `version` | u8 | protocol major version |
 | `type` | u8 | 0 data, 1 ack, 2 credit, 3 beat, 4 control |
 | `flags` | u8 | bit 0 encrypted, bit 1 fragmented, bit 2 lifetime present |
-| `srcIdx` | u8 | origin, in the sending link's index table |
+| `srcIdx` | u8 | origin, in the sending direct connection's index table |
 | `dstIdx` | u8 | destination, same table |
 | `channelId` | u16 | end to end channel; 0 is the end to end control channel |
 | `seq` | u32 | per channel sequence number, serial arithmetic (RFC 1982) |
@@ -152,9 +152,9 @@ Channel ids: the impolite side allocates even ids from 2, the polite side odd id
 ## 5. Relaying
 
 A relay C forwards an envelope from neighbor A to B only when A is the envelope's origin and C
-accepted a flow between A and B. It rewrites `srcIdx` to its own index for A on the link to B and
-`dstIdx` to 1, and lowers `lifetime` by half the incoming hop's round trip time, dropping the
-envelope when nothing is left.
+accepted a flow between A and B. It rewrites `srcIdx` to its own index for A on the direct
+connection to B and `dstIdx` to 1, and lowers `lifetime` by half the incoming hop's round trip
+time, dropping the envelope when nothing is left.
 
 Partial reliability: `maxRetransmits` applies per hop (each hop uses a transport with the same
 mode); `maxPacketLifeTime` applies end to end through the `lifetime` field.

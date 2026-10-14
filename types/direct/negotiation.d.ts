@@ -8,7 +8,7 @@
  *   colliding offer, the polite side rolls back implicitly.
  * - Candidates that arrive before the remote description are held and applied after it.
  *
- * All `handle*` calls must come through the link's serial queue (doc §2.2).
+ * All `handle*` calls must come through the direct connection's serial queue (doc §2.2).
  */
 export class Negotiator {
     /**

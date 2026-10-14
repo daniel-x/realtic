@@ -78,7 +78,7 @@ t.peerInfo = (id) => {
   const p = t.group.connections.get(id);
   return p ? { state: p.state, reason: p.reason, route: p.route, lastError: p.lastError, hint: p.hint } : null;
 };
-t.linkInfo = (id) => {
+t.directInfo = (id) => {
   const c = t.group.connections.get(id);
   if (!c?.directStarted) return null;
   const d = c.directConn;
@@ -300,9 +300,9 @@ t.hook = {
   sendCtl: (peerId, msg) => t.group.directConns.get(peerId)?.ralSendCtl(msg),
   rawEnvelope: async (via, target) => {
     const { encode } = await import("../../../src/transport/framing.js");
-    const link = t.group.directConns.get(via);
-    const dstIdx = t.group.localIndex(link, target);
-    link.ralSendEnvelope("rel", "raw", encode({ version: 1, type: 0, flags: 1, srcIdx: 0, dstIdx, channelId: 9, seq: 1, payload: new Uint8Array(40) }));
+    const directConn = t.group.directConns.get(via);
+    const dstIdx = t.group.localIndex(directConn, target);
+    directConn.ralSendEnvelope("rel", "raw", encode({ version: 1, type: 0, flags: 1, srcIdx: 0, dstIdx, channelId: 9, seq: 1, payload: new Uint8Array(40) }));
   },
   visibility: (hidden) => {
     Object.defineProperty(document, "visibilityState", { value: hidden ? "hidden" : "visible", configurable: true });

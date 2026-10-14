@@ -6,7 +6,7 @@ import {
   withScenario, connectAll, sleep, waitFor, PAIRINGS, pairings, closeBrowsers, states, openChannel, messages,
   sendMany, assertSequence, session, logMatches, FAST_RECOVERY, events, T, testConfig, effective, FAST_TIMINGS,
 } from "../common.js";
-import { TestStunServer } from "../harness/stun.js";
+import { TestStunServer } from "../support/stun.js";
 
 after(() => closeBrowsers());
 
@@ -60,14 +60,14 @@ for (const pairing of pairings()) {
         await sleep(300);
         s.server.setDown(false);
         await sleep(2500);
-        assert.deepEqual([await session(s, 0, 1), await session(s, 1, 0)], sess, "redelivered signaling did not rebuild the link");
+        assert.deepEqual([await session(s, 0, 1), await session(s, 1, 0)], sess, "redelivered signaling did not rebuild the direct connection");
         assert.equal(await s.eval(0, (id) => window.t.state(id), s.id(1)), "connected");
         assert.deepEqual(await s.eval(0, () => window.t.errors), []);
         assert.deepEqual(await s.eval(1, () => window.t.errors), []);
       });
     });
 
-    test("DIR-2 silent link death: slow, stale, ICE restart, recovery", async () => {
+    test("DIR-2 silent direct connection death: slow, stale, ICE restart, recovery", async () => {
       await withScenario(`DIR-2-${pairing}`, { browsers: two(pairing) }, async (s) => {
         await connectAll(s);
         await openChannel(s, 0, 1, "chat");
@@ -158,7 +158,7 @@ for (const pairing of pairings()) {
       });
     });
 
-    test("DIR-6 STUN passes, DTLS dropped: watchdog fires and the link rebuilds", async () => {
+    test("DIR-6 STUN passes, DTLS dropped: watchdog fires and the direct connection rebuilds", async () => {
       await withScenario(`DIR-6-${pairing}`, { browsers: two(pairing) }, async (s) => {
         s.rule(s.id(0), s.id(1), { drop: ["dtls"] });
         s.rule(s.id(1), s.id(0), { drop: ["dtls"] });
@@ -185,7 +185,7 @@ for (const pairing of pairings()) {
           await s.eval(side, (id) => window.t.hook.rebuild(id), s.id(other));
           await waitFor(async () => (await logMatches(s, other, /remote session changed/, t0)).length > 0, 20000, "session mismatch detected");
           await waitFor(async () => (await session(s, other, side)) !== before, 20000, "other side rebuilt");
-          await waitFor(async () => (await s.eval(other, (id) => window.t.linkInfo(id).state, s.id(side))) === "connected", 20000, "link connected");
+          await waitFor(async () => (await s.eval(other, (id) => window.t.directInfo(id).state, s.id(side))) === "connected", 20000, "direct connection connected");
           await s.waitState(other, side, "connected", 20000);
           await s.waitState(side, other, "connected", 20000);
           await sendMany(s, 0, 1, "chat", `s${side}-`, 20);
@@ -256,7 +256,7 @@ for (const pairing of pairings()) {
           await cdp.send("Page.setWebLifecycleState", { state: "active" });
           await s.eval(0, () => window.t.hook.visibility(false));
           assert.ok(!mid.some((e) => e.state === "reconnecting"), `hidden frozen tab not judged stale: ${JSON.stringify(mid)}`);
-          assert.equal(await session(s, 1, 0), sess, "hidden tab link not rebuilt");
+          assert.equal(await session(s, 1, 0), sess, "hidden tab direct connection not rebuilt");
           await s.waitState(1, 0, "connected", 10000);
         }
       });
@@ -292,7 +292,7 @@ for (const pairing of pairings()) {
       });
     });
 
-    test("DIR-11 rebinding under a live link", async () => {
+    test("DIR-11 rebinding under a live direct connection", async () => {
       await withScenario(`DIR-11-${pairing}`, { browsers: two(pairing) }, async (s) => {
         await connectAll(s);
         await openChannel(s, 0, 1, "chat");
@@ -306,7 +306,7 @@ for (const pairing of pairings()) {
       });
     });
 
-    test("DIR-12 network change: new public address, ICE restart on the live link without loss", async () => {
+    test("DIR-12 network change: new public address, ICE restart on the live direct connection without loss", async () => {
       const stun = await new TestStunServer().start();
       try {
         await withScenario(`DIR-12-${pairing}`, { browsers: two(pairing), config: { probeIceServers: [{ urls: stun.url }], networkProbeIntervalMs: Math.min(2000, T.networkProbeIntervalMs) } }, async (s) => {
@@ -339,7 +339,7 @@ for (const pairing of pairings()) {
       }
     });
 
-    test("DIR-13 signaling server down: links unaffected, renegotiation over the mesh", async () => {
+    test("DIR-13 signaling server down: direct connections unaffected, renegotiation over the mesh", async () => {
       await withScenario(`DIR-13-${pairing}`, { browsers: two(pairing) }, async (s) => {
         await connectAll(s);
         await openChannel(s, 0, 1, "chat");
@@ -369,7 +369,7 @@ for (const pairing of pairings()) {
         const budgets = await s.eval(0, () => window.t.stats().budgets);
         console.log(`    DIR-14 ${pairing}: free ${Math.round(free / 1000)} kbps, capped ${Math.round(capped / 1000)} kbps`, JSON.stringify(budgets));
         assert.ok(capped < 250000 * 1.3, `sender follows the cap: ${capped}`);
-        const budget = Object.values(budgets.links[s.id(1)] ?? {})[0];
+        const budget = Object.values(budgets.direct[s.id(1)] ?? {})[0];
         assert.ok(budget > BWE_FLOOR_BUDGET * 1.2 && budget < 250000 * 2, `budget near the cap, not at the estimator's floor or ceiling: ${budget}`);
         assert.equal(await s.eval(1, (id) => window.t.state(id), s.id(0)), "connected");
       });
@@ -428,7 +428,7 @@ for (const pairing of pairings()) {
     }
 
     for (const stableTracks of pairing === "chromium" ? [false, true] : [false]) {
-      test(`DIR-17 stable ${stableTracks ? "track" : "stream"} survives a link rebuild`, async () => {
+      test(`DIR-17 stable ${stableTracks ? "track" : "stream"} survives a direct connection rebuild`, async () => {
         await withScenario(`DIR-17-${pairing}-${stableTracks}`, { browsers: two(pairing), peerConfig: { 1: { stableTracks } } }, async (s) => {
           await s.eval(0, () => window.t.publishCounter("camera"));
           await connectAll(s);

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RecoverySchedule } from "../../src/link/ice-restart.js";
+import { RecoverySchedule } from "../../src/direct/ice-restart.js";
 import { RalFakeClock } from "../../src/util/clock.js";
 
 const flush = () => new Promise((r) => setImmediate(r));

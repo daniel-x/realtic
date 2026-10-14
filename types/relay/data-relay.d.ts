@@ -3,7 +3,8 @@ export function connects(f: any, a: any, b: any): boolean;
 /**
  * Relay side of peer relaying (plan section 7.2, 9.3, decision D21): accepts or rejects relay
  * requests, forwards envelopes of accepted flows between its two neighbors, rewrites the index
- * fields, and reports a failed link to one end to the other end with `route-down` / `route-slow`.
+ * fields, and reports a failed direct connection to one end to the other end with `route-down` /
+ * `route-slow`.
  */
 export class DataRelay {
     static key(origin: any, target: any, flow: any): string;
@@ -18,10 +19,10 @@ export class DataRelay {
     get rate(): number;
     /**
      * Handles `relay-request` from the origin end.
-     * @param {import("../link/direct-peer-connection.js").RalDirectPeerConnection} link link to the origin
+     * @param {import("../direct/direct-peer-connection.js").RalDirectPeerConnection} directConn to the origin
      * @param {{flow: string, origin: string, target: string, role: string, kinds?: string[]}} msg
      */
-    onRequest(link: import("../link/direct-peer-connection.js").RalDirectPeerConnection, msg: {
+    onRequest(directConn: import("../direct/direct-peer-connection.js").RalDirectPeerConnection, msg: {
         flow: string;
         origin: string;
         target: string;
@@ -30,33 +31,34 @@ export class DataRelay {
     }): void;
     /**
      * Handles `relay-close` from either end and forwards it to the other end.
-     * @param {import("../link/direct-peer-connection.js").RalDirectPeerConnection} link
+     * @param {import("../direct/direct-peer-connection.js").RalDirectPeerConnection} directConn
      * @param {{flow: string}} msg
      */
-    onClose(link: import("../link/direct-peer-connection.js").RalDirectPeerConnection, msg: {
+    onClose(directConn: import("../direct/direct-peer-connection.js").RalDirectPeerConnection, msg: {
         flow: string;
     }): void;
     /**
      * Handles `standby-activate` from the origin end: the standby becomes active.
-     * @param {import("../link/direct-peer-connection.js").RalDirectPeerConnection} link
+     * @param {import("../direct/direct-peer-connection.js").RalDirectPeerConnection} directConn
      * @param {{flow: string}} msg
      */
-    onActivate(link: import("../link/direct-peer-connection.js").RalDirectPeerConnection, msg: {
+    onActivate(directConn: import("../direct/direct-peer-connection.js").RalDirectPeerConnection, msg: {
         flow: string;
     }): void;
     /**
      * Forwards an envelope of an accepted flow. Drops everything else.
-     * @param {import("../link/direct-peer-connection.js").RalDirectPeerConnection} link incoming link
+     * @param {import("../direct/direct-peer-connection.js").RalDirectPeerConnection} directConn incoming
      * @param {string} src origin peer id
      * @param {string} dst destination peer id
      * @param {Uint8Array} bytes
      * @param {import("../transport/framing.js").Envelope} e
      * @param {string} key transport key
      */
-    forward(link: import("../link/direct-peer-connection.js").RalDirectPeerConnection, src: string, dst: string, bytes: Uint8Array, e: import("../transport/framing.js").Envelope, key: string): void;
+    forward(directConn: import("../direct/direct-peer-connection.js").RalDirectPeerConnection, src: string, dst: string, bytes: Uint8Array, e: import("../transport/framing.js").Envelope, key: string): void;
     /**
-     * The link to an end of a relayed flow changed state: tell the far end (plan section 6.2).
-     * @param {string} peerId the neighbor whose link changed
+     * The direct connection to an end of a relayed flow changed state: tell the far end (plan section
+     * 6.2).
+     * @param {string} peerId the neighbor whose direct connection changed
      * @param {"ok"|"slow"|"stale"} verdict
      */
     endChanged(peerId: string, verdict: "ok" | "slow" | "stale"): void;

@@ -10,7 +10,7 @@ import { forwardLog } from "../../src/diag/log-forward.js";
 import { RalLog } from "../../src/diag/log.js";
 import { RalFakeClock, realClock } from "../../src/util/clock.js";
 import { createSignalingServer } from "../../server/node/server.js";
-import { createPhpServer } from "../integration/harness/php-server.js";
+import { createPhpServer } from "../integration/support/php-server.js";
 
 const php = process.env.REALTIC_PHP ?? "php";
 const hasPhp = spawnSync(php, ["-v"]).status === 0;
@@ -41,21 +41,21 @@ async function twoPeersOneFile(url, file) {
   const a = peer("A");
   const b = peer("B");
   a.clock.advance(1.789);
-  a.log.write("info", "link", "state connected -> slow", { reason: "test" }, { peer: "B", session: "s1" });
+  a.log.write("info", "direct", "state connected -> slow", { reason: "test" }, { peer: "B", session: "s1" });
   const stopA = forwardLog(a, { url, group: "g1", intervalMs: 50 });
   const stopB = forwardLog(b, { url, group: "g1", intervalMs: 50 });
   b.log.write("debug", "signaling", "two\nlines");
   await new Promise((r) => setTimeout(r, 200));
-  a.log.write("warn", "link", "later");
+  a.log.write("warn", "direct", "later");
   await stopA();
   await stopB();
   const lines = readFileSync(file, "utf8").trimEnd().split("\n");
   assert.equal(lines.length, 3, lines.join("\n"));
   for (const line of lines) assert.match(line, new RegExp(`^${US} ${US} [AB] #\\d+ `));
   const first = lines.find((l) => l.includes(" A #1 "));
-  assert.ok(first.includes(" 2026-10-13_12-00-00.001789 A #1 INFO  [link] peer=B s=s1 state connected -> slow {\"reason\":\"test\"}"), first);
+  assert.ok(first.includes(" 2026-10-13_12-00-00.001789 A #1 INFO  [direct] peer=B s=s1 state connected -> slow {\"reason\":\"test\"}"), first);
   assert.ok(lines.some((l) => l.endsWith(" B #1 DEBUG [signaling] two lines")), lines.join("\n"));
-  assert.ok(lines.some((l) => l.includes(" A #2 WARN  [link] later")), lines.join("\n"));
+  assert.ok(lines.some((l) => l.includes(" A #2 WARN  [direct] later")), lines.join("\n"));
 }
 
 test("realClock.wallNow follows Date.now with sub-millisecond resolution", () => {

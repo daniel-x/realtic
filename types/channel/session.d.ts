@@ -47,7 +47,7 @@ export class Session extends Emitter {
         sleepMinMs: 2000;
         sleepRebuildMs: 30000;
         candidateBatchMs: 50;
-        linkStateIntervalMs: 2000;
+        directTableIntervalMs: 2000;
         statsIntervalMs: 1000;
         switchThreshold: 0.25;
         switchHoldMs: 3000;

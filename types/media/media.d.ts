@@ -25,9 +25,10 @@ export class RalPublication {
     #private;
 }
 /**
- * Media over links (plan section 10). For each link the group's media plan lists the sources it
- * must carry (own publications and, on a relay, forwarded tracks); this class keeps the link's
- * send slots, `mid-map` announcements and encoding activity in line with that plan.
+ * Media over direct connections (plan section 10). For each direct connection the group's media
+ * plan lists the sources it must carry (own publications and, on a relay, forwarded tracks); this
+ * class keeps the direct connection's send slots, `mid-map` announcements and encoding activity in
+ * line with that plan.
  *
  * Receiving: `mid-map` from a neighbor maps its transceiver mids to origin and publication; the
  * received tracks feed the stable streams.
@@ -49,23 +50,23 @@ export class MediaManager {
     }): RalPublication;
     /** @param {RalPublication} pub */
     unpublish(pub: RalPublication): void;
-    /** Replaces the track of a source on every link that carries it. */
+    /** Replaces the track of a source on every direct connection that carries it. */
     replaceSource(key: any, track: any): Promise<void>;
     /**
-     * Brings a link's slots in line with the plan. Serialized per link.
-     * @param {import("../link/direct-peer-connection.js").RalDirectPeerConnection} link
+     * Brings a direct connection's slots in line with the plan. Serialized per direct connection.
+     * @param {import("../direct/direct-peer-connection.js").RalDirectPeerConnection} directConn
      */
-    sync(link: import("../link/direct-peer-connection.js").RalDirectPeerConnection): void;
-    /** Senders of a link, for bandwidth control. */
-    senders(linkId: any): any;
-    /** Forgets a link's sending and receiving state (rebuild or close). */
-    resetLink(linkId: any): void;
+    sync(directConn: import("../direct/direct-peer-connection.js").RalDirectPeerConnection): void;
+    /** Senders of a direct connection, for bandwidth control. */
+    senders(neighborId: any): any;
+    /** Forgets a direct connection's sending and receiving state (rebuild or close). */
+    resetDirect(neighborId: any): void;
     /**
      * Handles `mid-map` from a neighbor.
-     * @param {import("../link/direct-peer-connection.js").RalDirectPeerConnection} link
+     * @param {import("../direct/direct-peer-connection.js").RalDirectPeerConnection} directConn
      * @param {{mids: Record<string, {origin: string, pub: string, tag: string, kind: string}>}} msg
      */
-    onMidMap(link: import("../link/direct-peer-connection.js").RalDirectPeerConnection, msg: {
+    onMidMap(directConn: import("../direct/direct-peer-connection.js").RalDirectPeerConnection, msg: {
         mids: Record<string, {
             origin: string;
             pub: string;
@@ -74,7 +75,7 @@ export class MediaManager {
         }>;
     }): void;
     /** Re-resolves announced mids to tracks, e.g. after a negotiation round. */
-    resolve(link: any): void;
+    resolve(directConn: any): void;
     #private;
 }
 import { StableStreams } from "./stable-stream.js";

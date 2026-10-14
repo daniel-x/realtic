@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { candidates, RouteSelector, chooseStandby, CLASS, routeKey, relayLoad, codecPathOk } from "../../src/routing/planner.js";
-import { linkBudgets, relayBudget, scaleFor, BudgetReporter } from "../../src/media/bwe.js";
+import { directBudgets, relayBudget, scaleFor, BudgetReporter } from "../../src/media/bwe.js";
 import { RalFakeClock } from "../../src/util/clock.js";
 
 const ok = (rtt, extra = {}) => ({ state: "ok", rtt, candidateType: "host", ...extra });
-const neighbor = (link, table, extra = {}) => ({ link, table: new Map(Object.entries(table)), load: 0, relay: true, mediaRelay: "allow", major: 1, ...extra });
+const neighbor = (toNeighbor, table, extra = {}) => ({ toNeighbor, table: new Map(Object.entries(table)), load: 0, relay: true, mediaRelay: "allow", major: 1, ...extra });
 
 const base = { target: "B", maxRelayLoad: 0.8, major: 1, self: "A" };
 
@@ -70,7 +70,7 @@ test("load figure", () => {
 });
 
 test("budgets: audio reserve, video by weight; relay reports the minimum", () => {
-  const b = linkBudgets(1000000, [{ id: "a", kind: "audio" }, { id: "v1", kind: "video" }, { id: "v2", kind: "video", weight: 3 }], { headroom: 0.9, audioReserveBps: 64000 });
+  const b = directBudgets(1000000, [{ id: "a", kind: "audio" }, { id: "v1", kind: "video" }, { id: "v2", kind: "video", weight: 3 }], { headroom: 0.9, audioReserveBps: 64000 });
   assert.equal(b.get("a"), 64000);
   assert.equal(b.get("v1"), 209000);
   assert.equal(b.get("v2"), 627000);

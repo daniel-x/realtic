@@ -26,7 +26,7 @@ const group = new RalPeerGroup({
 | `leave()` | sends `bye` over the mesh and the signaling server (beacon when supported) and closes; called on `pagehide` automatically |
 | `close()` | closes everything without `bye` |
 | `capabilities()` | `{ setSinkId, getDisplayMedia, encodedTransform, encodedStreams, trackGenerator, networkInformation }` |
-| `getStats()` | links, routes, relay flows, relay load, bitrate budgets |
+| `getStats()` | direct connections, routes, relay flows, relay load, bitrate budgets |
 | `diagnosticReport()` | promise of a JSON-serializable report: log, versions, config, states, pair dumps, getStats snapshot |
 | `log` | the ring buffer logger, see below |
 | `ready` | promise, resolves when keys and capabilities are collected |
@@ -70,7 +70,7 @@ never has to be rebuilt.
 
 Differences to `RTCDataChannel`:
 
-- The channel is end to end and survives route switches and link rebuilds.
+- The channel is end to end and survives route switches and direct connection rebuilds.
 - Reliable channels buffer messages during an outage and deliver them after recovery, in order
   and without duplicates. `send` throws `OperationError` when the outage buffer
   (`reliableBufferBytes`, 16 MiB) is full, and `InvalidStateError` when the channel is not open.

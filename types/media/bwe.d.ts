@@ -2,14 +2,14 @@
  * Per-flow bitrate budgets (plan section 10.4). Pure functions plus a report throttle.
  */
 /**
- * Splits a link's outgoing bitrate into per-flow budgets: audio flows get a fixed reservation,
- * video flows share the remainder by weight.
+ * Splits a direct connection's outgoing bitrate into per-flow budgets: audio flows get a fixed
+ * reservation, video flows share the remainder by weight.
  * @param {number} availableBps
  * @param {{id: string, kind: "audio"|"video", weight?: number}[]} flows
  * @param {{headroom: number, audioReserveBps: number}} options
  * @returns {Map<string, number>}
  */
-export function linkBudgets(availableBps: number, flows: {
+export function directBudgets(availableBps: number, flows: {
     id: string;
     kind: "audio" | "video";
     weight?: number;

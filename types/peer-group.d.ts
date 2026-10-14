@@ -35,9 +35,9 @@ export class RalPeerGroup extends Emitter {
      * The current RalDirectPeerConnection of each connection that has one, i.e. every existing
      * RTCPeerConnection. Each is owned by its RalPeerConnection (`connection.directConn`), which
      * replaces the entry on a rebuild.
-     * @type {Map<string, import("./link/direct-peer-connection.js").RalDirectPeerConnection>}
+     * @type {Map<string, import("./direct/direct-peer-connection.js").RalDirectPeerConnection>}
      */
-    directConns: Map<string, import("./link/direct-peer-connection.js").RalDirectPeerConnection>;
+    directConns: Map<string, import("./direct/direct-peer-connection.js").RalDirectPeerConnection>;
     selfId: string;
     config: Readonly<{
         HEARTBEAT_IDLE_MS: 500;
@@ -57,7 +57,7 @@ export class RalPeerGroup extends Emitter {
         sleepMinMs: 2000;
         sleepRebuildMs: 30000;
         candidateBatchMs: 50;
-        linkStateIntervalMs: 2000;
+        directTableIntervalMs: 2000;
         statsIntervalMs: 1000;
         switchThreshold: 0.25;
         switchHoldMs: 3000;
@@ -127,7 +127,7 @@ export class RalPeerGroup extends Emitter {
     get ready(): Promise<void>;
     /** Local codec capabilities, once collected. */
     get localCaps(): any;
-    /** RTCConfiguration for a link (plan section 11). */
+    /** RTCConfiguration for a direct connection (plan section 11). */
     rtcConfig(withTurn: any): {
         iceServers: RTCIceServer[];
         bundlePolicy: string;
@@ -140,21 +140,21 @@ export class RalPeerGroup extends Emitter {
      */
     addPeer(peerId: string): RalPeerConnection;
     /**
-     * Removes a peer: sends `bye` and closes its link.
+     * Removes a peer: sends `bye` and closes its direct connection.
      * @param {string} peerId
      */
     removePeer(peerId: string, reason?: string): void;
     /**
-     * The index this side uses for `peerId` on `link`, allocating and announcing a new one.
-     * @param {import("./link/direct-peer-connection.js").RalDirectPeerConnection} link
+     * The index this side uses for `peerId` on `directConn`, allocating and announcing a new one.
+     * @param {import("./direct/direct-peer-connection.js").RalDirectPeerConnection} directConn
      * @param {string} peerId
      */
-    localIndex(link: import("./link/direct-peer-connection.js").RalDirectPeerConnection, peerId: string): any;
+    localIndex(directConn: import("./direct/direct-peer-connection.js").RalDirectPeerConnection, peerId: string): any;
     /** Peer id for an index in the neighbor's table, or undefined. */
-    remoteIndex(link: any, idx: any): any;
-    /** @internal link id whose received tracks of `origin` the stable stream should use */
+    remoteIndex(directConn: any, idx: any): any;
+    /** @internal neighbor id whose received tracks of `origin` the stable stream should use */
     mediaSourceFor(origin: any): any;
-    /** @internal re-plans media on all open links */
+    /** @internal re-plans media on all open direct connections */
     mediaChanged(): void;
     /** True when this side wants `origin`'s track of `kind` and `tag`. */
     subscribed(origin: any, kind: any, tag: any): boolean;
@@ -177,9 +177,11 @@ export class RalPeerGroup extends Emitter {
      * @param {import("./media/subscriptions.js").Subscription} sub
      */
     setSubscription(origin: string, sub: import("./media/subscriptions.js").Subscription): void;
-    /** Runs a liveness check on all links at once; restarts ICE on slow or stale ones. */
-    checkLinks(reason: any): void;
-    /** ICE restart on every live direct link (decision D15). */
+    /**
+     * Runs a liveness check on all direct connections at once; restarts ICE on slow or stale ones.
+     */
+    checkDirectConns(reason: any): void;
+    /** ICE restart on every live direct connection (decision D15). */
     restartAll(reason: any): void;
     /** Sends `bye` to all peers via mesh and signaling. Usable from `pagehide`. */
     leave(): void;
@@ -192,7 +194,7 @@ export class RalPeerGroup extends Emitter {
         trackGenerator: boolean;
         networkInformation: boolean;
     };
-    /** Per link and per route metrics, relay load and budgets. */
+    /** Per direct connection and per route metrics, relay load and budgets. */
     getStats(): {
         selfId: any;
         load: number;
@@ -203,10 +205,10 @@ export class RalPeerGroup extends Emitter {
             role: any;
             kinds: any;
         }[];
-        links: {};
+        directConns: {};
         peers: {};
         budgets: {
-            links: any;
+            direct: any;
             relayed: any;
             reported: any;
         };
@@ -225,4 +227,4 @@ import { RalLog } from "./diag/log.js";
 import { SignalingRouter } from "./signaling/router.js";
 import { MediaManager } from "./media/media.js";
 import { Routing } from "./routing/route.js";
-import { NetworkWatcher } from "./link/network.js";
+import { NetworkWatcher } from "./direct/network.js";

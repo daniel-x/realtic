@@ -1,4 +1,4 @@
-/** True when a link can carry a new route. */
+/** True when a direct connection can carry a new route. */
 export function usable(m: any): boolean;
 /**
  * True when some codec of `kind` can go origin -> relay (decode) -> target (relay encodes).
@@ -9,7 +9,7 @@ export function codecPathOk(origin: any, relay: any, target: any, kind: any): an
  * Lists route candidates from self to target, best first.
  * @param {object} input
  * @param {string} input.target
- * @param {LinkMetrics} [input.direct]
+ * @param {DirectMetrics} [input.direct]
  * @param {Map<string, NeighborInfo>} input.neighbors
  * @param {number} [input.needBps] bitrate the pair's flows need
  * @param {boolean} [input.media] whether the pair exchanges media
@@ -22,7 +22,7 @@ export function codecPathOk(origin: any, relay: any, target: any, kind: any): an
  */
 export function candidates({ target, direct, neighbors, needBps, media, maxRelayLoad, major, caps, self, mediaPolicy }: {
     target: string;
-    direct?: LinkMetrics;
+    direct?: DirectMetrics;
     neighbors: Map<string, NeighborInfo>;
     needBps?: number;
     media?: boolean;
@@ -48,8 +48,8 @@ export function chooseStandby(list: Candidate[], active: Candidate | null): Cand
  */
 export function relayLoad(relayedBps: number, uplinkBps: number, cpuLimited: boolean): number;
 /**
- * Route planning (plan section 7.2, 7.3). Pure logic over link metrics; the routing layer feeds
- * it the local link table and the neighbors' tables.
+ * Route planning (plan section 7.2, 7.3). Pure logic over direct connection metrics; the routing
+ * layer feeds it the local direct connection table and the neighbors' tables.
  */
 /** Route classes in strict order of preference. */
 export const CLASS: Readonly<{
@@ -91,11 +91,11 @@ export class RouteSelector {
     #private;
 }
 /**
- * Metrics of one direct link.
+ * Metrics of one direct connection.
  */
-export type LinkMetrics = {
+export type DirectMetrics = {
     /**
-     * liveness verdict, "down" without an open link
+     * liveness verdict, "down" without an open direct connection
      */
     state: "ok" | "slow" | "stale" | "down";
     /**
@@ -116,17 +116,17 @@ export type LinkMetrics = {
     candidateType?: "host" | "srflx" | "prflx" | "relay";
 };
 /**
- * What a neighbor told us about itself in `link-state`.
+ * What a neighbor told us about itself in `direct-table`.
  */
 export type NeighborInfo = {
     /**
-     * our own link to the neighbor
+     * our own direct connection to the neighbor
      */
-    link: LinkMetrics;
+    toNeighbor: DirectMetrics;
     /**
-     * the neighbor's links, by peer id
+     * the neighbor's direct connections, by peer id
      */
-    table: Map<string, LinkMetrics>;
+    table: Map<string, DirectMetrics>;
     /**
      * relay load figure
      */

@@ -73,7 +73,7 @@ function stream(s, p, q, label, prefix, everyMs = 50) {
   };
 }
 
-const FAST = FAST_TIMINGS ? FAST_RECOVERY : { ...FAST_RECOVERY, linkStateIntervalMs: 1000 };
+const FAST = FAST_TIMINGS ? FAST_RECOVERY : { ...FAST_RECOVERY, directTableIntervalMs: 1000 };
 const F = effective(FAST);
 
 for (const pairing of pairings()) {
@@ -408,13 +408,13 @@ for (const pairing of pairings()) {
           await openChannel(s, 0, 1, "rt8", { ordered: false, maxRetransmits: 8 });
           s.rule(s.id(0), s.id(2), { delay: 200 });
           s.rule(s.id(2), s.id(0), { delay: 200 });
-          await sleep(Math.max(2500, 4 * F.linkStateIntervalMs));
+          await sleep(Math.max(2500, 4 * F.directTableIntervalMs));
           await sendMany(s, 0, 1, "life", "old", 20);
           await sleep(1000);
           assert.equal((await messages(s, 1, 0, "life")).length, 0, "expired messages dropped at the relay");
           s.rule(s.id(0), s.id(2), { delay: 0 });
           s.rule(s.id(2), s.id(0), { delay: 0 });
-          await sleep(Math.max(2500, 4 * F.linkStateIntervalMs));
+          await sleep(Math.max(2500, 4 * F.directTableIntervalMs));
           await sendMany(s, 0, 1, "life", "new", 20);
           await waitFor(async () => (await messages(s, 1, 0, "life")).length >= 10, 8000, "fresh messages arrive");
           s.rule(s.id(2), s.id(1), { loss: 0.25 });

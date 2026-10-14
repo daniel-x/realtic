@@ -32,7 +32,7 @@ export const TEST_TIMINGS = Object.freeze({
   // Above the longest page freeze of the other scenarios (DIR-9: 2 x stale), which must not rebuild.
   sleepRebuildMs: 8000,
   candidateBatchMs: 20,
-  linkStateIntervalMs: 300,
+  directTableIntervalMs: 300,
   statsIntervalMs: 500,
   switchHoldMs: 750,
   earlySwitchIntervalMs: 2500,

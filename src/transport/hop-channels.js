@@ -1,6 +1,6 @@
 /**
- * Per-link transport channels by reliability class (plan section 5, 9.3). One instance belongs to
- * one RTCPeerConnection generation.
+ * Per direct connection transport channels by reliability class (plan section 5, 9.3). One instance
+ * belongs to one RTCPeerConnection generation.
  *
  * - `ctl` (id 0) reliable ordered: JSON control messages and the 1 byte beat.
  * - `rel` (id 1) reliable ordered: envelopes of reliable channels.

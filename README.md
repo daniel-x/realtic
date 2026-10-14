@@ -6,10 +6,10 @@ the browser API leaves out:
 - **Peer relays.** When two peers cannot connect directly, a third peer of the group relays
   their data (end to end encrypted) and media (re-encoded once, sent to every target). TURN is
   used only when no peer can relay.
-- **Fast liveness and recovery.** One way idle heartbeats with receiver side judgment: a link is
-  `slow` after 1 s of silence and stale after 5 s. Recovery runs ICE restarts with backoff, then
-  rebuilds, and a pair with a relay switches to a warm standby relay at `slow` without
-  renegotiation.
+- **Fast liveness and recovery.** One way idle heartbeats with receiver side judgment: a direct
+  connection is `slow` after 1 s of silence and stale after 5 s. Recovery runs ICE restarts with
+  backoff, then rebuilds, and a pair with a relay switches to a warm standby relay at `slow`
+  without renegotiation.
 - **Production fixes of plain WebRTC.** Only one side offers, signaling is applied serially and
   deduplicated, candidates are batched, every connection has a session id, the data channel
   opening is watched, failures have a state, a reason and a hint, and a ring buffer log records
@@ -82,7 +82,7 @@ npm run bundle            # optional single-file bundle in dist/
 ```
 
 The integration tests run every peer in its own browser context and route all ICE traffic
-through a user space UDP proxy (`test/integration/harness/netem.js`) that can block, delay,
+through a user space UDP proxy (`test/integration/support/netem.js`) that can block, delay,
 drop by packet class, cap bandwidth and rebind each directed peer pair.
 
 ## Authorship

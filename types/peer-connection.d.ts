@@ -1,9 +1,9 @@
 /**
- * The connection to one other peer of the group, kept up as long as the peer is known (plan
- * section 3). It is direct, wrapping the RTCPeerConnection of its direct link, or routed through a
- * relay, using the relay's direct link. Finding routes, keeping standby routes warm and switching
- * routes happen inside; the object survives link rebuilds, ICE restarts and route switches, so app
- * state bound to it never has to be rebuilt (doc §3.8).
+ * The connection to one other peer of the group, kept up as long as the peer is known (plan section
+ * 3). It is direct, wrapping the RTCPeerConnection of its direct connection, or routed through a
+ * relay, using the relay's direct connection. Finding routes, keeping standby routes warm and
+ * switching routes happen inside; the object survives direct connection rebuilds, ICE restarts and
+ * route switches, so app state bound to it never has to be rebuilt (doc §3.8).
  *
  * Events: `statechange` (state, reason), `routechange` (route), `channel` (RalDataChannel),
  * `track` ({track, stream, tag, origin, kind}), `trackreplaced` ({track, oldTrack, stream, tag}),

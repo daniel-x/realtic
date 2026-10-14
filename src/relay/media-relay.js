@@ -1,12 +1,12 @@
 import { wants } from "../media/subscriptions.js";
-import { linkBudgets, relayBudget, scaleFor, BudgetReporter } from "../media/bwe.js";
+import { directBudgets, relayBudget, scaleFor, BudgetReporter } from "../media/bwe.js";
 import { connects } from "./data-relay.js";
 
 const BUDGET_CHANGE = 0.1;
 const CPU_BUDGET_FACTOR = 0.7;
 
 /**
- * Media planning per link (plan section 10.2, 10.4, 7.2a).
+ * Media planning per direct connection (plan section 10.2, 10.4, 7.2a).
  *
  * Own publications go to a neighbor when the pair route is direct, and to a relay neighbor when a
  * relay flow of a target runs through it: active for the active flow, inactive (prepared slot) for
@@ -14,18 +14,18 @@ const CPU_BUDGET_FACTOR = 0.7;
  * active only for active flows and wanted subscriptions. Unsubscribed flows stop at their source:
  * a relay tells the origin the subscriptions of the ends behind it.
  *
- * Bandwidth: each link splits its estimate into per-flow budgets. A relay reports to the origin
- * the minimum budget of its destination hops per forwarded publication and encodes all outputs
- * at that minimum (decision D3).
+ * Bandwidth: each direct connection splits its estimate into per-flow budgets. A relay reports to
+ * the origin the minimum budget of its destination hops per forwarded publication and encodes all
+ * outputs at that minimum (decision D3).
  */
 export class MediaRelay {
   #group;
   #routing;
-  /** link id -> Map<source key, bps> */
+  /** neighbor id -> Map<source key, bps> */
   #budgets = new Map();
-  /** link id -> loss-based estimate (browsers without availableOutgoingBitrate) */
+  /** neighbor id -> loss-based estimate (browsers without availableOutgoingBitrate) */
   #estimate = new Map();
-  /** link id -> {bytes, at} outbound video measurement */
+  /** neighbor id -> {bytes, at} outbound video measurement */
   #sendRate = new Map();
   /** `${origin}:${pub}` -> {info, track, via} tracks received for forwarding */
   #forwardable = new Map();
@@ -55,17 +55,17 @@ export class MediaRelay {
 
   /**
    * Handles `subscription` from a neighbor: stores it and, on a relay, forwards it to the origin.
-   * @param {import("../link/direct-peer-connection.js").RalDirectPeerConnection} link
+   * @param {import("../direct/direct-peer-connection.js").RalDirectPeerConnection} directConn
    * @param {{origin: string, for?: string, audio: boolean, video: boolean, tags: string[]|null}} msg
    */
-  onSubscription(link, msg) {
+  onSubscription(directConn, msg) {
     if (typeof msg.origin !== "string") return;
     const g = this.#group;
-    const subscriber = typeof msg.for === "string" ? msg.for : link.ralRemoteId;
-    if (subscriber !== link.ralRemoteId) {
+    const subscriber = typeof msg.for === "string" ? msg.for : directConn.ralRemoteId;
+    if (subscriber !== directConn.ralRemoteId) {
       const ok =
         msg.origin === g.selfId
-          ? this.#routing.hasFlowVia(subscriber, link.ralRemoteId)
+          ? this.#routing.hasFlowVia(subscriber, directConn.ralRemoteId)
           : this.#routing.relay.carries(subscriber, msg.origin);
       if (!ok) return;
     }
@@ -73,7 +73,7 @@ export class MediaRelay {
     if (!m) this.subs.set(subscriber, (m = new Map()));
     const sub = { audio: msg.audio !== false, video: msg.video !== false, tags: Array.isArray(msg.tags) ? msg.tags : null };
     m.set(msg.origin, sub);
-    this.l.info("remote subscription", { subscriber, origin: msg.origin, via: link.ralRemoteId, ...sub });
+    this.l.info("remote subscription", { subscriber, origin: msg.origin, via: directConn.ralRemoteId, ...sub });
     if (msg.origin !== g.selfId) {
       const toOrigin = g.directConns.get(msg.origin);
       if (toOrigin?.ralCtlOpen && this.#routing.relay.carries(subscriber, msg.origin)) toOrigin.ralSendCtl({ ...msg, for: subscriber });
@@ -90,31 +90,31 @@ export class MediaRelay {
     const targets = new Set([origin]);
     for (const f of this.#routing.pairs.get(origin)?.flows.values() ?? []) if (f.state === "open") targets.add(f.via);
     for (const id of targets) {
-      const link = g.directConns.get(id);
-      if (link?.ralCtlOpen) link.ralSendCtl(msg);
+      const directConn = g.directConns.get(id);
+      if (directConn?.ralCtlOpen) directConn.ralSendCtl(msg);
     }
   }
 
-  /** Re-sends all our subscriptions over `link` (after it opened). */
-  resendSubscriptions(link) {
+  /** Re-sends all our subscriptions over `directConn` (after it opened). */
+  resendSubscriptions(directConn) {
     const g = this.#group;
     for (const origin of g.connections.keys()) {
       const sub = g.subscription(origin);
       if (!sub) continue;
-      if (origin === link.ralRemoteId || this.#routing.hasFlowVia(origin, link.ralRemoteId)) link.ralSendCtl({ t: "subscription", origin, for: g.selfId, ...sub });
+      if (origin === directConn.ralRemoteId || this.#routing.hasFlowVia(origin, directConn.ralRemoteId)) directConn.ralSendCtl({ t: "subscription", origin, for: g.selfId, ...sub });
     }
   }
 
   // Plan ----------------------------------------------------------------------------------------
 
   /**
-   * Sources link `link` must carry: `[{key, info, track, active, params}]`.
-   * @param {import("../link/direct-peer-connection.js").RalDirectPeerConnection} link
+   * Sources `directConn` must carry: `[{key, info, track, active, params}]`.
+   * @param {import("../direct/direct-peer-connection.js").RalDirectPeerConnection} directConn
    */
-  plan(link) {
+  plan(directConn) {
     const g = this.#group;
     const out = [];
-    const neighbor = link.ralRemoteId;
+    const neighbor = directConn.ralRemoteId;
     for (const pub of g.media.pubs.values()) {
       let carried = false;
       let active = false;
@@ -149,7 +149,7 @@ export class MediaRelay {
       if (!carried) continue;
       out.push({ key: `fwd:${key}`, info: { ...src.info }, track: src.track, active });
     }
-    for (const p of out) p.params = this.#params(link, p);
+    for (const p of out) p.params = this.#params(directConn, p);
     return out;
   }
 
@@ -158,11 +158,11 @@ export class MediaRelay {
    * bitrate, so only relayed flows get explicit caps: a relay encodes every output at the minimum
    * budget of its destinations, and the origin applies the budget the relay reported (D3).
    */
-  #params(link, p) {
+  #params(directConn, p) {
     if (p.info.kind !== "video") return undefined;
     const bps = p.key.startsWith("fwd:")
       ? this.#relayBudgets.get(p.info.origin)?.get(p.info.pub)
-      : this.#reported.get(link.ralRemoteId)?.get(p.info.pub);
+      : this.#reported.get(directConn.ralRemoteId)?.get(p.info.pub);
     if (bps === undefined) return undefined;
     return { maxBitrate: bps, scaleResolutionDownBy: scaleFor(bps, this.#group.config.bweResolutionSteps) };
   }
@@ -186,62 +186,63 @@ export class MediaRelay {
 
   // Forwarding sources (relay side) -------------------------------------------------------------
 
-  receivedSource(link, info, track) {
-    if (info.origin !== link.ralRemoteId) return;
-    this.#forwardable.set(`${info.origin}:${info.pub}`, { info, track, via: link.ralRemoteId });
+  receivedSource(directConn, info, track) {
+    if (info.origin !== directConn.ralRemoteId) return;
+    this.#forwardable.set(`${info.origin}:${info.pub}`, { info, track, via: directConn.ralRemoteId });
     if (this.#routing.relay.flows.size) this.#group.mediaChanged();
   }
 
-  receivedSourceGone(link, info) {
+  receivedSourceGone(directConn, info) {
     const key = `${info.origin}:${info.pub}`;
-    if (this.#forwardable.get(key)?.via !== link.ralRemoteId) return;
+    if (this.#forwardable.get(key)?.via !== directConn.ralRemoteId) return;
     this.#forwardable.delete(key);
     this.#group.mediaChanged();
   }
 
-  forwardedSourcesGone(linkId) {
+  forwardedSourcesGone(neighborId) {
     let changed = false;
     for (const [key, src] of this.#forwardable) {
-      if (src.via !== linkId) continue;
+      if (src.via !== neighborId) continue;
       this.#forwardable.delete(key);
       changed = true;
     }
-    this.#reported.delete(linkId);
-    this.#budgets.delete(linkId);
+    this.#reported.delete(neighborId);
+    this.#budgets.delete(neighborId);
     if (changed) this.#group.mediaChanged();
   }
 
   // Bandwidth -----------------------------------------------------------------------------------
 
   /**
-   * Bitrate the link can carry: `availableOutgoingBitrate`, or where a browser does not report
-   * it, a loss-based estimate (additive increase, multiplicative decrease above 10 % loss).
+   * Bitrate the direct connection can carry: `availableOutgoingBitrate`, or where a browser does
+   * not report it, a loss-based estimate (additive increase, multiplicative decrease above 10 %
+   * loss).
    */
-  #capacity(link, stats) {
-    const m = link.ralMetrics;
+  #capacity(directConn, stats) {
+    const m = directConn.ralMetrics;
     if (typeof m.bitrate === "number" && m.bitrate > 0) return m.bitrate;
     let bytes = 0;
     for (const s of stats?.values() ?? []) if (s.type === "outbound-rtp" && s.kind === "video") bytes += s.bytesSent ?? 0;
     const now = this.#group.clock.now();
-    const prev = this.#sendRate.get(link.ralRemoteId);
+    const prev = this.#sendRate.get(directConn.ralRemoteId);
     const rate = prev && now > prev.at ? ((bytes - prev.bytes) * 8000) / (now - prev.at) : undefined;
-    this.#sendRate.set(link.ralRemoteId, { bytes, at: now });
+    this.#sendRate.set(directConn.ralRemoteId, { bytes, at: now });
     if (rate === undefined) return undefined;
-    const last = this.#estimate.get(link.ralRemoteId) ?? this.#group.config.bweFallbackBps;
+    const last = this.#estimate.get(directConn.ralRemoteId) ?? this.#group.config.bweFallbackBps;
     const next = (m.loss ?? 0) > 0.1 ? Math.max(50000, Math.min(last, rate) * 0.85) : Math.min(last + Math.max(50000, last * 0.08), 4000000);
-    this.#estimate.set(link.ralRemoteId, next);
+    this.#estimate.set(directConn.ralRemoteId, next);
     return next;
   }
 
-  onMetrics(link, m, stats) {
+  onMetrics(directConn, m, stats) {
     const g = this.#group;
-    const capacity = this.#capacity(link, stats);
-    const current = this.#budgets.get(link.ralRemoteId);
+    const capacity = this.#capacity(directConn, stats);
+    const current = this.#budgets.get(directConn.ralRemoteId);
     let next;
     if (capacity !== undefined) {
       const flows = [];
-      for (const [key, sender] of g.media.senders(link.ralRemoteId)) if (sender.active) flows.push({ id: key, kind: sender.info.kind });
-      next = linkBudgets(capacity, flows, { headroom: g.config.bweHeadroom, audioReserveBps: g.config.audioReserveBps });
+      for (const [key, sender] of g.media.senders(directConn.ralRemoteId)) if (sender.active) flows.push({ id: key, kind: sender.info.kind });
+      next = directBudgets(capacity, flows, { headroom: g.config.bweHeadroom, audioReserveBps: g.config.audioReserveBps });
     }
     let changed = !next !== !current || (next && current && next.size !== current.size);
     for (const [k, v] of next ?? []) {
@@ -249,9 +250,9 @@ export class MediaRelay {
       if (old === undefined || Math.abs(v - old) > old * BUDGET_CHANGE) changed = true;
     }
     if (changed) {
-      if (next) this.#budgets.set(link.ralRemoteId, next);
-      else this.#budgets.delete(link.ralRemoteId);
-      this.l.debug("link budgets", { peer: link.ralRemoteId, capacity: capacity && Math.round(capacity), budgets: next && Object.fromEntries(next) });
+      if (next) this.#budgets.set(directConn.ralRemoteId, next);
+      else this.#budgets.delete(directConn.ralRemoteId);
+      this.l.debug("direct connection budgets", { peer: directConn.ralRemoteId, capacity: capacity && Math.round(capacity), budgets: next && Object.fromEntries(next) });
     }
     const relayChanged = this.#updateRelayBudgets();
     if (changed || relayChanged) g.mediaChanged();
@@ -261,11 +262,11 @@ export class MediaRelay {
   #updateRelayBudgets() {
     const g = this.#group;
     const byOrigin = new Map();
-    for (const [linkId, budgets] of this.#budgets) {
+    for (const [neighborId, budgets] of this.#budgets) {
       for (const [key, bps] of budgets) {
         if (!key.startsWith("fwd:")) continue;
         const [origin, pub] = key.slice(4).split(":");
-        if (linkId === origin) continue;
+        if (neighborId === origin) continue;
         let m = byOrigin.get(origin);
         if (!m) byOrigin.set(origin, (m = new Map()));
         if (!m.has(pub)) m.set(pub, []);
@@ -296,12 +297,12 @@ export class MediaRelay {
   }
 
   /** Origin side: a relay reported budgets for our publications. */
-  onBwe(link, msg) {
+  onBwe(directConn, msg) {
     const m = new Map();
     for (const f of msg.flows ?? []) if (f.origin === this.#group.selfId && typeof f.bps === "number") m.set(f.pub, f.bps);
-    this.#reported.set(link.ralRemoteId, m);
-    this.l.debug("relay budget report", { via: link.ralRemoteId, flows: Object.fromEntries(m), cpu: msg.cpu });
-    this.#group.media.sync(link);
+    this.#reported.set(directConn.ralRemoteId, m);
+    this.l.debug("relay budget report", { via: directConn.ralRemoteId, flows: Object.fromEntries(m), cpu: msg.cpu });
+    this.#group.media.sync(directConn);
   }
 
   /** Tells each peer which media kinds we publish to it, when that changed. */
@@ -318,8 +319,8 @@ export class MediaRelay {
   /** Bitrate this peer forwards for others, in bps (sum of forwarding budgets). */
   relayedBps() {
     let sum = 0;
-    for (const [linkId, budgets] of this.#budgets) {
-      const senders = this.#group.media.senders(linkId);
+    for (const [neighborId, budgets] of this.#budgets) {
+      const senders = this.#group.media.senders(neighborId);
       for (const [key, bps] of budgets) if (key.startsWith("fwd:") && senders.get(key)?.active) sum += bps;
     }
     return sum;
@@ -328,6 +329,6 @@ export class MediaRelay {
   /** Budget tables as plain objects, for `group.getStats()`. */
   budgetsSnapshot() {
     const plain = (tables) => Object.fromEntries([...tables].map(([id, b]) => [id, Object.fromEntries(b)]));
-    return { links: plain(this.#budgets), relayed: plain(this.#relayBudgets), reported: plain(this.#reported) };
+    return { direct: plain(this.#budgets), relayed: plain(this.#relayBudgets), reported: plain(this.#reported) };
   }
 }

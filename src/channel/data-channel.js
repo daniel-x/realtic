@@ -42,8 +42,8 @@ function makeEvent(type, init) {
 
 /**
  * End to end data channel with `RTCDataChannel`-like API (plan section 9.2). Survives route
- * changes, ICE restarts and link rebuilds. Created by `peer.createChannel()` or delivered by the
- * peer's `channel` event.
+ * changes, ICE restarts and direct connection rebuilds. Created by `peer.createChannel()` or
+ * delivered by the peer's `channel` event.
  */
 export class RalDataChannel extends EventTarget {
   #state = "connecting";

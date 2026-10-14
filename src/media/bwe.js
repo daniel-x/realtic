@@ -3,14 +3,14 @@
  */
 
 /**
- * Splits a link's outgoing bitrate into per-flow budgets: audio flows get a fixed reservation,
- * video flows share the remainder by weight.
+ * Splits a direct connection's outgoing bitrate into per-flow budgets: audio flows get a fixed
+ * reservation, video flows share the remainder by weight.
  * @param {number} availableBps
  * @param {{id: string, kind: "audio"|"video", weight?: number}[]} flows
  * @param {{headroom: number, audioReserveBps: number}} options
  * @returns {Map<string, number>}
  */
-export function linkBudgets(availableBps, flows, { headroom, audioReserveBps }) {
+export function directBudgets(availableBps, flows, { headroom, audioReserveBps }) {
   const out = new Map();
   let rest = Math.max(0, availableBps * headroom);
   const audio = flows.filter((f) => f.kind === "audio");

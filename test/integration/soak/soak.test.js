@@ -28,7 +28,7 @@ for (const pairing of pairings()) {
     console.log(`    soak ${pairing}: seed ${SEED}`);
     const rand = prng(SEED);
     const pick = (n) => Math.floor(rand() * n);
-    await withScenario(`soak-${pairing}-${SEED}`, { browsers: PAIRINGS[pairing].slice(0, N), config: { ...FAST_RECOVERY, linkStateIntervalMs: 1000 } }, async (s) => {
+    await withScenario(`soak-${pairing}-${SEED}`, { browsers: PAIRINGS[pairing].slice(0, N), config: { ...FAST_RECOVERY, directTableIntervalMs: 1000 } }, async (s) => {
       for (let i = 0; i < N; i++) await s.eval(i, () => window.t.publishCounter("camera"));
       await s.meshAll();
       await s.waitAllConnected(90000);
@@ -82,7 +82,7 @@ for (const pairing of pairings()) {
         assert.deepEqual(await s.eval(i, () => window.t.errors), [], `no unhandled errors at ${s.id(i)}`);
         const logSize = await s.eval(i, () => window.t.log().length);
         assert.ok(logSize <= 1024, "log bounded");
-        const queued = await s.eval(i, () => Object.values(window.t.stats().links).reduce((n, l) => n + l.bufferedAmount, 0));
+        const queued = await s.eval(i, () => Object.values(window.t.stats().directConns).reduce((n, l) => n + l.bufferedAmount, 0));
         assert.ok(queued < 8 * 1024 * 1024, `transport buffers bounded: ${queued}`);
       }
     });

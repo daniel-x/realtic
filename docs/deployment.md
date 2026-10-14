@@ -16,7 +16,7 @@ new RalPeerGroup({ signaling: { url: "wss://example.com/signal", group: "demo" }
 ```
 
 A signaling outage does not end live connections: they keep running and renegotiate over the
-mesh. Only new pairs and pairs that need a new direct link wait for the server.
+mesh. Only new pairs and pairs that need a new direct connection wait for the server.
 
 ### PHP Server (`server/php`)
 
@@ -68,7 +68,7 @@ reverse proxy for `wss://`.
 `<dir>/<group>.log`, in arrival order, so both ends of a problem are in one place:
 
 ```
-2026-10-13_14-02-07.481233 2026-10-13_14-02-07.480912 Ab12x #57 INFO  [link] peer=Cd34y s=9f1c state connected -> slow {"reason":"no data for 1500 ms"}
+2026-10-13_14-02-07.481233 2026-10-13_14-02-07.480912 Ab12x #57 INFO  [direct] peer=Cd34y s=9f1c state connected -> slow {"reason":"no data for 1500 ms"}
 ```
 
 The first time is when the server received the entry, the second the client's time of the entry
@@ -105,8 +105,8 @@ const group = new RalPeerGroup({
 
 `config.turnMode`:
 
-- `"fallback"` (default): links start without TURN. TURN servers are added with an ICE restart
-  only when the direct attempt failed and no peer relay route exists.
+- `"fallback"` (default): direct connections start without TURN. TURN servers are added with an
+  ICE restart only when the direct attempt failed and no peer relay route exists.
 - `"always"`: TURN from the start.
 - `"relay-only"`: `iceTransportPolicy: "relay"`, for privacy (no host or reflexive addresses).
 

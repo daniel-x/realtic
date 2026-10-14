@@ -3,7 +3,7 @@ import { StableTrack } from "./stable-track.js";
 
 /**
  * Stable streams (plan section 10.3): one MediaStream per origin and publication that lives as
- * long as the publication, fed by whichever source (direct link or relay) the current route
+ * long as the publication, fed by whichever source (direct connection or relay) the current route
  * uses. On a switch the new track is added before the old one is removed, so a `<video>` with
  * that `srcObject` keeps playing.
  */
@@ -12,7 +12,7 @@ export class StableStreams {
 
   /**
    * @param {object} options
-   * @param {(origin: string) => string | null} options.preferredSource link id the origin's route uses
+   * @param {(origin: string) => string | null} options.preferredSource neighbor id the origin's route uses
    * @param {(origin: string, event: string, detail: object) => void} options.emit
    * @param {() => MediaStream} [options.createStream]
    * @param {boolean} [options.stableTracks] give one generated track per publication (Chromium)
@@ -27,9 +27,9 @@ export class StableStreams {
   }
 
   /**
-   * Registers a track for a publication from a source link.
+   * Registers a track for a publication from a source neighbor.
    * @param {{origin: string, pub: string, tag: string, kind: string}} info
-   * @param {string} source link id
+   * @param {string} source neighbor id
    * @param {MediaStreamTrack} track
    */
   attach(info, source, track) {
@@ -49,8 +49,8 @@ export class StableStreams {
   }
 
   /**
-   * Removes a source of a publication; ends the publication when no source is left. With
-   * `grace`, the stream waits `graceMs` for a new source first (link rebuild or route repair).
+   * Removes a source of a publication; ends the publication when no source is left. With `grace`,
+   * the stream waits `graceMs` for a new source first (direct connection rebuild or route repair).
    * @param {string} origin
    * @param {string} pub
    * @param {string} source

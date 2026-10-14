@@ -118,7 +118,7 @@ declare function defineClass(Base: typeof RTCPeerConnection): {
             sleepMinMs: 2000;
             sleepRebuildMs: 30000;
             candidateBatchMs: 50;
-            linkStateIntervalMs: 2000;
+            directTableIntervalMs: 2000;
             statsIntervalMs: 1000;
             switchThreshold: 0.25;
             switchHoldMs: 3000;
@@ -303,8 +303,8 @@ declare function defineClass(Base: typeof RTCPeerConnection): {
         /** Beats and re-checks liveness now. Returns true when the connection is slow or stale. */
         ralCheckNow(): boolean;
         /**
-         * Records a round trip sample measured with the periodic `link-state` echo. It refreshes every
-         * link-state period, while the candidate pair RTT refreshes only with consent checks.
+         * Records a round trip sample measured with the periodic `direct-table` echo. It refreshes
+         * every direct-table period, while the candidate pair RTT refreshes only with consent checks.
          * @param {number} ms
          */
         ralNoteControlRtt(ms: number): void;

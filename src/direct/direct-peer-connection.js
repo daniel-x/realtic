@@ -311,8 +311,8 @@ function defineClass(Base) {
     }
 
     /**
-     * Records a round trip sample measured with the periodic `link-state` echo. It refreshes every
-     * link-state period, while the candidate pair RTT refreshes only with consent checks.
+     * Records a round trip sample measured with the periodic `direct-table` echo. It refreshes
+     * every direct-table period, while the candidate pair RTT refreshes only with consent checks.
      * @param {number} ms
      */
     ralNoteControlRtt(ms) {
@@ -340,7 +340,7 @@ function defineClass(Base) {
       this.#heartbeat.stop();
       this.#watchdog.clear();
       this.#batcher.close();
-      for (const r of this.#slotRequests.values()) r.reject(new Error("link rebuilt"));
+      for (const r of this.#slotRequests.values()) r.reject(new Error("direct connection rebuilt"));
       for (const w of this.#stableWaiters) w(false);
       const close = () => {
         this.#hop.close();
@@ -537,7 +537,7 @@ function defineClass(Base) {
      * @returns {Promise<{tr: RTCRtpTransceiver, kind: string, key: string|null}>}
      */
     async ralAcquireSendSlot(kind, key) {
-      if (this.#closed) throw new Error("link rebuilt");
+      if (this.#closed) throw new Error("direct connection rebuilt");
       const idle = this.#slots.find((s) => s.kind === kind && s.key === null && s.tr.mid != null);
       if (idle) {
         idle.key = key;
@@ -604,7 +604,7 @@ function defineClass(Base) {
           if (ok === false) {
             this.#clock.clearTimeout(timer);
             this.#stableWaiters.delete(check);
-            reject(new Error("link rebuilt"));
+            reject(new Error("direct connection rebuilt"));
             return;
           }
           if (cond()) {

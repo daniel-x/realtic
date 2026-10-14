@@ -5,7 +5,7 @@ import { RalFakeClock } from "../../src/util/clock.js";
 
 test("ring buffer overwrites oldest and seq shows the gap", () => {
   const log = new RalLog({ capacity: 4, clock: new RalFakeClock() });
-  for (let i = 0; i < 6; i++) log.write("info", "link", `m${i}`);
+  for (let i = 0; i < 6; i++) log.write("info", "direct", `m${i}`);
   const e = log.entries();
   assert.deepEqual(e.map((x) => x.seq), [3, 4, 5, 6]);
   assert.deepEqual(log.entries({ since: 4 }).map((x) => x.msg), ["m4", "m5"]);
@@ -27,8 +27,8 @@ test("text uses UTC timestamps", () => {
   assert.equal(formatTime(Date.UTC(2026, 9, 12, 3, 4, 5, 6) + 0.789), "2026-10-12_03-04-05.006789");
   assert.equal(formatTime(Date.UTC(2026, 9, 12, 3, 4, 5, 999) + 0.9999), "2026-10-12_03-04-06.000000");
   const log = new RalLog({ clock: new RalFakeClock(Date.UTC(2026, 0, 1)) });
-  log.write("info", "link", "hi", { a: 1 }, { peer: "p1" });
-  assert.equal(log.text(), '2026-01-01_00-00-00.000000 INFO  [link] peer=p1 hi {"a":1}');
+  log.write("info", "direct", "hi", { a: 1 }, { peer: "p1" });
+  assert.equal(log.text(), '2026-01-01_00-00-00.000000 INFO  [direct] peer=p1 hi {"a":1}');
 });
 
 test("data is capped and unserializable data does not throw", () => {
