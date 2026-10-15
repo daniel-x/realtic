@@ -18,53 +18,22 @@ new RalPeerGroup({ signaling: { url: "wss://example.com/signal", group: "demo" }
 A signaling outage does not end live connections: they keep running and renegotiate over the
 mesh. Only new pairs and pairs that need a new direct connection wait for the server.
 
-### PHP Server (`server/php`)
+### Reference Servers
 
-Requirements: PHP 8.0 or newer with `pdo_sqlite` (SQLite 3.24 or newer), which most shared hosts have.
+The reference servers live in their own repositories. Both also serve the realtic client files
+(library and demos) when started, from the installed `realtic` package or a realtic checkout next
+to them.
 
-1. Copy `server/php/signal.php` and `server/php/data/` (with its `.htaccess`) to the web space.
-2. Optional: copy `config.example.php` to `config.php` next to `signal.php` and adjust it.
-3. Make `data/` writable for PHP. Keep the database out of reach of HTTP: the `.htaccess` covers
-   Apache; on nginx deny the directory (`location ~ /data/ { deny all; }`), or set `db` to a path
-   outside the document root.
-
-Each client sends one POST per poll: every `poll_fast_ms` (250) for 5 s after a message, every
-`poll_idle_ms` (3000) otherwise. The server sends both values to the clients. After the mesh is
-up most signaling runs over the peers, so a connected group costs one request per client every
-3 s. Every request is short, so the server needs no long-lived connections. Other settings:
-
-| Key | Default | Meaning |
-| --- | ------- | ------- |
-| `db` | `data/realtic.sqlite` | SQLite file |
-| `journal_mode` | `WAL` | use `DELETE` on network file systems, where WAL does not work |
-| `member_timeout_s` | 30 | a client that stops polling leaves the group after this |
-| `message_ttl_s` | 30 | undelivered messages expire |
-| `max_group_members` | 64 | |
-| `max_body_bytes`, `max_messages`, `max_message_bytes` | 262144, 64, 65536 | request limits |
-| `allowed_origins` | `[]` | CORS origins for use from another site, or `['*']` |
-| `log_file` | none | request log: one UTC line per request that carried messages or changed membership |
-| `log_polls` | false | log idle polls too |
-| `log_max_bytes`, `log_files` | 1048576, 5 | log rotation by size |
-| `client_log_dir` | none | directory of `log.php`, see [Forwarded Logs](#forwarded-logs); disabled when unset |
-| `client_log_max_bytes`, `client_log_files` | 16777216, 5 | rotation of each group file |
-
-Messages are delivered at most once: a request returns its client's pending messages and deletes
-exactly those rows in the same `BEGIN IMMEDIATE` transaction.
-
-`server/php/router.php` runs everything on PHP's built-in server for development
-(`php -S localhost:8080 server/php/router.php`); it is not meant for production.
-
-### Node Server (`server/node`)
-
-`node server/node/server.js [port] [--log-dir <dir>]` runs a WebSocket server with groups,
-presence and a `sendBeacon` endpoint (`<url>/beacon?id=&group=`, body `{ to, msg }`). It also
-serves the demos. With `--log-dir`, it accepts forwarded logs at `/log`. Put it behind a TLS
-reverse proxy for `wss://`.
+- [realtic-server-php](https://github.com/daniel-x/realtic-server-php): `signal.php` with SQLite
+  and repeated polling, for plain PHP hosting (PHP 8.0 with `pdo_sqlite`). Its README lists the
+  deployment steps and settings.
+- [realtic-server-node](https://github.com/daniel-x/realtic-server-node): a WebSocket server
+  (`npx realtic-server-node 8080`), for hosts that run a Node process.
 
 ### Forwarded Logs
 
-`forwardLog` (`realtic/log-forward`) sends a page's log entries to `server/php/log.php` or to
-`/log` of the Node server. The server appends the entries of all peers of a group to one file,
+`forwardLog` (`realtic/log-forward`) sends a page's log entries to `log.php` of the PHP server or
+to `/log` of the Node server (started with `--log-dir`). The server appends the entries of all peers of a group to one file,
 `<dir>/<group>.log`, in arrival order, so both ends of a problem are in one place:
 
 ```

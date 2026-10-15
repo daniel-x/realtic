@@ -1,7 +1,8 @@
 /**
- * Signaling adapter for the PHP reference server (`server/php/signal.php`): repeated polling
- * (pull), no long-lived requests. Each request carries the queued outgoing messages and returns
- * the pending incoming ones plus the group's member list, from which presence events are derived.
+ * Signaling adapter for the PHP reference server (realtic-server-php, `signal.php`): repeated
+ * polling (pull), no long-lived requests. Each request carries the queued outgoing messages and
+ * returns the pending incoming ones plus the group's member list, from which presence events are
+ * derived.
  *
  * The adapter polls every `fastMs` while signaling is active (a message sent or received within
  * `activeMs`) and every `idleMs` otherwise; once the mesh is up, most signaling goes over it and

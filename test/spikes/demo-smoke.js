@@ -1,12 +1,13 @@
 // Opens both demos in Chromium and Firefox against both reference servers and prints what the
-// pages show. Usage: node test/spikes/demo-smoke.js
-import { createSignalingServer } from "../../server/node/server.js";
-import { createPhpServer } from "../integration/support/php-server.js";
+// pages show. Usage: node test/spikes/demo-smoke.js [<kind>=<base url> ...], e.g.
+// `node=http://localhost:8080` for a server started elsewhere; default: both, started here.
+import { createNodeServer, createPhpServer } from "../integration/support/servers.js";
 import { openPage, closeBrowsers } from "../integration/support/browsers.js";
 
-for (const kind of ["php", "node"]) {
-  const s = kind === "php" ? await createPhpServer() : await createSignalingServer({});
-  const base = `http://localhost:${s.port}`;
+const given = process.argv.slice(2).map((arg) => arg.split(/=(.*)/s));
+for (const [kind, url] of given.length ? given : [["php"], ["node"]]) {
+  const s = url ? null : kind === "php" ? await createPhpServer() : await createNodeServer();
+  const base = url ?? `http://localhost:${s.port}`;
   for (const demo of ["call", "chat"]) {
     const query = `?group=smoke-${demo}${kind === "node" ? "&server=node" : ""}`;
     const a = await openPage("chromium", `${base}/examples/${demo}/${query}`);
@@ -24,6 +25,6 @@ for (const kind of ["php", "node"]) {
     await a.context().close();
     await b.context().close();
   }
-  await s.close();
+  await s?.close();
 }
 await closeBrowsers();

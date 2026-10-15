@@ -25,8 +25,7 @@ playing across route changes.
 npm install realtic
 ```
 
-The package has no runtime dependencies. The Node signaling server in `server/node/` also needs
-`ws` (`npm install ws`).
+The package has no runtime dependencies.
 
 ## Quick Start
 
@@ -51,22 +50,25 @@ for (const track of media.getTracks()) group.publish(track);
 
 ## Signaling Servers
 
-realtic ships two reference signaling servers. The client picks the adapter from the URL: a
-`ws://` or `wss://` URL uses the WebSocket adapter, any other URL the polling adapter, or set
-`type: "polling" | "websocket"` explicitly.
+realtic has two reference signaling servers, each in its own repository. The client picks the
+adapter from the URL: a `ws://` or `wss://` URL uses the WebSocket adapter, any other URL the
+polling adapter, or set `type: "polling" | "websocket"` explicitly.
 
-- `server/php/`: `signal.php` with SQLite and repeated polling (no long-lived requests), for plain
-  PHP hosting. This is the default of the demos.
-- `server/node/`: a WebSocket server, for hosts that run a Node process.
+- [realtic-server-php](https://github.com/daniel-x/realtic-server-php): `signal.php` with SQLite
+  and repeated polling (no long-lived requests), for plain PHP hosting. This is the default of
+  the demos.
+- [realtic-server-node](https://github.com/daniel-x/realtic-server-node): a WebSocket server, for
+  hosts that run a Node process.
 
-Run the demos with either:
+Both serve the realtic client files too, so they run the demos. With the server repository
+checked out next to this one:
 
 ```sh
-php -S localhost:8080 server/php/router.php
+cd ../realtic-server-php && php -S localhost:8080 router.php
 # http://localhost:8080/examples/call/?group=test   (open in several tabs or devices)
 # http://localhost:8080/examples/chat/?group=test
 
-npm install && node server/node/server.js 8080
+cd ../realtic-server-node && npm install && node server.js 8080
 # http://localhost:8080/examples/call/?group=test&server=node
 ```
 

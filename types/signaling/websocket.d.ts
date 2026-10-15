@@ -1,7 +1,7 @@
 /**
- * Reference WebSocket signaling adapter for the Node reference server (`server/node`). Wire format:
- * JSON frames `{ to, msg }` from the client, `{ from, msg }` and `{ presence, peer }` from the
- * server. Reconnects with backoff; messages sent while disconnected are dropped (the library
+ * Reference WebSocket signaling adapter for the Node reference server (realtic-server-node). Wire
+ * format: JSON frames `{ to, msg }` from the client, `{ from, msg }` and `{ presence, peer }` from
+ * the server. Reconnects with backoff; messages sent while disconnected are dropped (the library
  * retries what matters, and stale signaling is worse than lost signaling, doc §2.1).
  */
 export class RalWebSocketSignaling {

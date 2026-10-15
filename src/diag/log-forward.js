@@ -3,13 +3,13 @@ const DEFAULT_INTERVAL_MS = 1000;
 const MAX_BODY_CHARS = 60000;
 
 /**
- * Sends the log entries of a group to a log endpoint of a reference server (`server/node` with a
- * log directory, or `server/php/log.php`), which appends them to one file per group. It starts
- * with the entries already buffered, then sends the new ones every `intervalMs` and when the page
- * becomes hidden, and the rest with `sendBeacon` on `pagehide`, as far as the browser's beacon
- * quota allows (Chromium: 64 KiB). A keepalive request still in flight at `pagehide` counts as
- * sent. Entries a failed request carried are sent again with the next one. On the wire, an
- * entry carries `timeUs`, its time as integer UTC microseconds, instead of `time`.
+ * Sends the log entries of a group to a log endpoint of a reference server (realtic-server-node
+ * with a log directory, or `log.php` of realtic-server-php), which appends them to one file per
+ * group. It starts with the entries already buffered, then sends the new ones every `intervalMs`
+ * and when the page becomes hidden, and the rest with `sendBeacon` on `pagehide`, as far as the
+ * browser's beacon quota allows (Chromium: 64 KiB). A keepalive request still in flight at
+ * `pagehide` counts as sent. Entries a failed request carried are sent again with the next one. On
+ * the wire, an entry carries `timeUs`, its time as integer UTC microseconds, instead of `time`.
  * @param {import("../peer-group.js").RalPeerGroup} peerGroup
  * @param {object} options
  * @param {string} options.url the log endpoint

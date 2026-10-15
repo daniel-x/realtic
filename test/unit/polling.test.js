@@ -1,19 +1,16 @@
-// RalPollingSignaling against the PHP reference server. Skipped when no PHP binary is available.
+// RalPollingSignaling against the PHP reference server. Skipped when the PHP server is not available.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { RalPollingSignaling } from "../../src/signaling/polling.js";
 import { createSignaling } from "../../src/signaling/create.js";
 import { RalWebSocketSignaling } from "../../src/signaling/websocket.js";
-import { createPhpServer } from "../integration/support/php-server.js";
+import { createPhpServer, phpServerMissing } from "../integration/support/servers.js";
 
-const php = process.env.REALTIC_PHP ?? "php";
-const hasPhp = spawnSync(php, ["-v"]).status === 0;
 let server;
 const open = [];
 
 before(async () => {
-  if (hasPhp) server = await createPhpServer({ workers: 4 });
+  if (!phpServerMissing) server = await createPhpServer({ workers: 4 });
 });
 after(async () => {
   for (const a of open) a.close();
@@ -48,7 +45,7 @@ test("createSignaling picks the adapter from the URL", () => {
   assert.throws(() => createSignaling({ url: "x", type: "carrier-pigeon" }, "A"), TypeError);
 });
 
-test("presence, at most once delivery, leave", { skip: !hasPhp && "no PHP" }, async () => {
+test("presence, at most once delivery, leave", { skip: phpServerMissing }, async () => {
   const a = client("A", "r1");
   const b = client("B", "r1");
   await until(() => a.presence.includes("join:B") && b.presence.includes("join:A"));
@@ -63,7 +60,7 @@ test("presence, at most once delivery, leave", { skip: !hasPhp && "no PHP" }, as
   await until(() => a.presence.includes("leave:B"));
 });
 
-test("server down: connected goes false and recovers", { skip: !hasPhp && "no PHP" }, async () => {
+test("server down: connected goes false and recovers", { skip: phpServerMissing }, async () => {
   const a = client("C", "r2");
   const states = [];
   a.onstatus = (ok) => states.push(ok);
@@ -76,7 +73,7 @@ test("server down: connected goes false and recovers", { skip: !hasPhp && "no PH
   assert.deepEqual(states, [true, false, true]);
 });
 
-test("messages to non-members are dropped, bad ids rejected", { skip: !hasPhp && "no PHP" }, async () => {
+test("messages to non-members are dropped, bad ids rejected", { skip: phpServerMissing }, async () => {
   const response = await fetch(`${server.url}?group=r3&id=${encodeURIComponent("bad id")}`, { method: "POST", body: "{}" });
   assert.equal(response.status, 400);
   const post = (body) => fetch(`${server.url}?group=r3&id=E`, { method: "POST", body: JSON.stringify(body) });
@@ -88,7 +85,7 @@ test("messages to non-members are dropped, bad ids rejected", { skip: !hasPhp &&
   assert.equal(b.got.length, 0);
 });
 
-test("a poll that arrives after leave does not add the client back", { skip: !hasPhp && "no PHP" }, async () => {
+test("a poll that arrives after leave does not add the client back", { skip: phpServerMissing }, async () => {
   const post = (id, body) => fetch(`${server.url}?group=r4&id=${id}`, { method: "POST", body: JSON.stringify(body) });
   await post("F", {});
   await post("G", {});

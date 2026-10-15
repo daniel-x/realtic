@@ -130,9 +130,9 @@ adapter with `createSignaling(settings, selfId)`. `type` defaults to `"websocket
 `wss:` URLs and to `"polling"` otherwise.
 
 - `RalPollingSignaling(url, selfId, { group, fastMs, idleMs, activeMs, timeoutMs })` for
-  `server/php/signal.php`. Polls every `fastMs` while signaling is active (for `activeMs`, 5000,
+  `signal.php` of realtic-server-php. Polls every `fastMs` while signaling is active (for `activeMs`, 5000,
   after a message) and every `idleMs` otherwise; without options it uses the server's values.
-- `RalWebSocketSignaling(url, selfId, { group })` for `server/node/server.js`.
+- `RalWebSocketSignaling(url, selfId, { group })` for realtic-server-node.
 - `RalMemoryHub` for tests: `hub.join(id)` returns an adapter.
 
 An adapter of your own implements `send(to, msg)`, `onmessage(from, msg)`, optionally

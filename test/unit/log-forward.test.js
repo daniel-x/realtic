@@ -1,19 +1,15 @@
 // forwardLog against the log endpoints of both reference servers: entries of all peers of a group
-// in one file, microsecond timestamps. The PHP part is skipped when no PHP binary is available.
+// in one file, microsecond timestamps. A part is skipped when its server is not available.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { forwardLog } from "../../src/diag/log-forward.js";
 import { RalLog } from "../../src/diag/log.js";
 import { RalFakeClock, realClock } from "../../src/util/clock.js";
-import { createSignalingServer } from "../../server/node/server.js";
-import { createPhpServer } from "../integration/support/php-server.js";
+import { createNodeServer, createPhpServer, nodeServerMissing, phpServerMissing } from "../integration/support/servers.js";
 
-const php = process.env.REALTIC_PHP ?? "php";
-const hasPhp = spawnSync(php, ["-v"]).status === 0;
 const dir = mkdtempSync(join(tmpdir(), "realtic-logs-"));
 const US = "\\d{4}-\\d\\d-\\d\\d_\\d\\d-\\d\\d-\\d\\d\\.\\d{6}";
 let node;
@@ -21,13 +17,15 @@ let plain;
 let phpServer;
 
 before(async () => {
-  node = await createSignalingServer({ logDir: join(dir, "node"), static: false });
-  plain = await createSignalingServer({ static: false });
-  if (hasPhp) phpServer = await createPhpServer({ workers: 2, clientLogDir: join(dir, "php") });
+  if (!nodeServerMissing) {
+    node = await createNodeServer({ logDir: join(dir, "node"), clientDir: false });
+    plain = await createNodeServer({ clientDir: false });
+  }
+  if (!phpServerMissing) phpServer = await createPhpServer({ workers: 2, clientLogDir: join(dir, "php") });
 });
 after(async () => {
-  await node.close();
-  await plain.close();
+  await node?.close();
+  await plain?.close();
   await phpServer?.close();
   rmSync(dir, { recursive: true, force: true });
 });
@@ -62,20 +60,20 @@ test("realClock.wallNow follows Date.now with sub-millisecond resolution", () =>
   for (let i = 0; i < 100; i++) assert.ok(Math.abs(realClock.wallNow() - Date.now()) <= 2);
 });
 
-test("Node server: entries of all peers of a group in one file", async () => {
+test("Node server: entries of all peers of a group in one file", { skip: nodeServerMissing }, async () => {
   await twoPeersOneFile(`http://127.0.0.1:${node.port}/log`, join(dir, "node", "g1.log"));
 });
 
-test("Node server without a log directory refuses forwarded logs", async () => {
+test("Node server without a log directory refuses forwarded logs", { skip: nodeServerMissing }, async () => {
   const res = await fetch(`http://127.0.0.1:${plain.port}/log?group=g&id=A`, { method: "POST", body: '{"entries":[]}' });
   assert.equal(res.status, 404);
 });
 
-test("PHP server: entries of all peers of a group in one file", { skip: !hasPhp && "no PHP" }, async () => {
+test("PHP server: entries of all peers of a group in one file", { skip: phpServerMissing }, async () => {
   await twoPeersOneFile(phpServer.logUrl, join(dir, "php", "g1.log"));
 });
 
-test("a failed request is sent again", async () => {
+test("a failed request is sent again", { skip: nodeServerMissing }, async () => {
   const a = peer("R");
   a.log.write("info", "x", "kept");
   let calls = 0;

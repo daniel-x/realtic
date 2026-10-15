@@ -13,7 +13,7 @@ import { RalWebSocketSignaling } from "./websocket.js";
 
 /**
  * Creates the adapter for a reference server: `"polling"` for the PHP server
- * (`server/php/signal.php`), `"websocket"` for the Node server (`server/node/server.js`).
+ * (realtic-server-php), `"websocket"` for the Node server (realtic-server-node).
  * @param {SignalingOptions} options
  * @param {string} selfId
  * @returns {import("./adapter.js").SignalingAdapter}
