@@ -2,6 +2,26 @@
   "name": "realtic",
   "version": "0.1.0",
   "description": "WebRTC mesh library with peer relays, fast liveness and connection recovery",
+  "keywords": [
+    "webrtc",
+    "mesh",
+    "p2p",
+    "relay",
+    "peer-to-peer",
+    "datachannel",
+    "signaling",
+    "ice-restart"
+  ],
+  "license": "MIT OR Apache-2.0",
+  "author": "Daniel Strecker",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/daniel-x/realtic.git"
+  },
+  "homepage": "https://github.com/daniel-x/realtic#readme",
+  "bugs": {
+    "url": "https://github.com/daniel-x/realtic/issues"
+  },
   "type": "module",
   "main": "./src/index.js",
   "types": "./types/index.d.ts",
@@ -18,7 +38,11 @@
   "files": [
     "src",
     "types",
-    "server"
+    "server",
+    "docs",
+    "examples",
+    "LICENSE-APACHE",
+    "LICENSE-MIT"
   ],
   "scripts": {
     "test": "node --test \"test/unit/**/*.test.js\"",
@@ -29,7 +53,16 @@
     "bundle": "esbuild src/index.js --bundle --format=esm --outfile=dist/realtic.js",
     "test:soak": "TEST_TIMINGS=${TEST_TIMINGS:-default} node --test test/integration/soak/soak.test.js",
     "spike": "node test/spikes/m0.js",
-    "test:php": "REALTIC_SERVER=php node test/integration/fast.js"
+    "test:php": "REALTIC_SERVER=php node test/integration/fast.js",
+    "prepublishOnly": "npm run lint && npm test && npm run types && git diff --exit-code types"
+  },
+  "peerDependencies": {
+    "ws": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "ws": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

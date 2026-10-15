@@ -16,6 +16,8 @@ export class StableStreams {
    * @param {(origin: string, event: string, detail: object) => void} options.emit
    * @param {() => MediaStream} [options.createStream]
    * @param {boolean} [options.stableTracks] give one generated track per publication (Chromium)
+   * @param {number} [options.graceMs] how long a stream without a source waits for a new one
+   * @param {import("../util/clock.js").Clock} [options.clock]
    */
   constructor({ preferredSource, emit, createStream = () => new MediaStream(), stableTracks = false, graceMs = 15000, clock = globalThis }) {
     this.graceMs = graceMs;

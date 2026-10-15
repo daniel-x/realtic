@@ -19,6 +19,15 @@ Reliable channels survive route switches, ICE restarts and rebuilds without losi
 duplicating messages. Media arrives in one stable `MediaStream` per publication that keeps
 playing across route changes.
 
+## Install
+
+```sh
+npm install realtic
+```
+
+The package has no runtime dependencies. The Node signaling server in `server/node/` also needs
+`ws` (`npm install ws`).
+
 ## Quick Start
 
 ```js
@@ -48,7 +57,7 @@ realtic ships two reference signaling servers. The client picks the adapter from
 
 - `server/php/`: `signal.php` with SQLite and repeated polling (no long-lived requests), for plain
   PHP hosting. This is the default of the demos.
-- `server/node/`: a WebSocket server, for hosts that run a Node process (needs `npm install ws`).
+- `server/node/`: a WebSocket server, for hosts that run a Node process.
 
 Run the demos with either:
 
@@ -84,6 +93,20 @@ npm run bundle            # optional single-file bundle in dist/
 The integration tests run every peer in its own browser context and route all ICE traffic
 through a user space UDP proxy (`test/integration/support/netem.js`) that can block, delay,
 drop by packet class, cap bandwidth and rebind each directed peer pair.
+
+## License
+
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or
+  <http://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in
+the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any
+additional terms or conditions.
 
 ## Authorship
 
