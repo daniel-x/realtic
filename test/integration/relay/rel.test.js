@@ -62,7 +62,7 @@ async function startTurnServer() {
   }
 }
 
-/** Polls `count()` until it reaches `target` or stops growing for `quietMs`, at most `timeoutMs`. */
+/** Polls `count()` until it reaches `target` or, once above 0, stops growing for `quietMs`; at most `timeoutMs`. */
 async function untilSettled(count, target, quietMs, timeoutMs) {
   const end = performance.now() + timeoutMs;
   let last = -1;
@@ -73,7 +73,7 @@ async function untilSettled(count, target, quietMs, timeoutMs) {
     if (n !== last) {
       last = n;
       since = performance.now();
-    } else if (performance.now() - since >= quietMs) return;
+    } else if (n > 0 && performance.now() - since >= quietMs) return;
     await sleep(200);
   }
 }
@@ -425,15 +425,16 @@ for (const pairing of pairings()) {
           await openChannel(s, 0, 1, "life", { ordered: false, maxPacketLifeTime: 150 });
           await openChannel(s, 0, 1, "rt0", { ordered: false, maxRetransmits: 0 });
           await openChannel(s, 0, 1, "rt8", { ordered: false, maxRetransmits: 8 });
+          const relayRtt = async () => (await s.eval(2, (id) => window.t.directInfo(id), s.id(0)))?.metrics?.rtt ?? 0;
           s.rule(s.id(0), s.id(2), { delay: 200 });
           s.rule(s.id(2), s.id(0), { delay: 200 });
-          await sleep(Math.max(2500, 4 * F.directTableIntervalMs));
+          await waitFor(async () => (await relayRtt()) >= 300, 10000, "the relay measures the delayed hop");
           await sendMany(s, 0, 1, "life", "old", 20);
           await sleep(1000);
           assert.equal((await messages(s, 1, 0, "life")).length, 0, "expired messages dropped at the relay");
           s.rule(s.id(0), s.id(2), { delay: 0 });
           s.rule(s.id(2), s.id(0), { delay: 0 });
-          await sleep(Math.max(2500, 4 * F.directTableIntervalMs));
+          await waitFor(async () => (await relayRtt()) < 100, 10000, "the relay measures the fast hop");
           await sendMany(s, 0, 1, "life", "new", 20);
           await waitFor(async () => (await messages(s, 1, 0, "life")).length >= 10, 8000, "fresh messages arrive");
           s.rule(s.id(2), s.id(1), { loss: 0.25 });
