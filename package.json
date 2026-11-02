@@ -38,6 +38,7 @@
   },
   "files": [
     "src",
+    "dist",
     "types",
     "docs",
     "examples",
@@ -54,7 +55,7 @@
     "test:soak": "TEST_TIMINGS=${TEST_TIMINGS:-default} node --test test/integration/soak/soak.test.js",
     "spike": "node test/spikes/m0.js",
     "test:php": "REALTIC_SERVER=php node test/integration/fast.js",
-    "prepublishOnly": "npm run lint && npm test && npm run types && git diff --exit-code types"
+    "prepublishOnly": "npm run lint && npm test && npm run types && git diff --exit-code types && npm run bundle"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
