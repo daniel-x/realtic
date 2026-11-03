@@ -72,6 +72,20 @@ cd ../realtic-server-node && npm install && node server.js 8080
 # http://localhost:8080/examples/call/?group=test&server=node
 ```
 
+## Limitations
+
+- **Browsers.** The automated tests run in Chromium and Firefox only. Safari and iOS are untested.
+- **Access control.** The reference signaling servers have none: any client that knows a group
+  name can join that group. Applications that need access control have to add it themselves.
+- **Relays and data.** A relay peer cannot read or change relayed data, but it sees which peers
+  communicate, envelope headers (channel id, sequence number), message sizes and timing.
+- **Relays and media.** Relayed media is not end to end encrypted, because the relay decodes and
+  re-encodes it, so the relay peer can read it. Set `mediaRelay: "never"` to rule this out; such a
+  pair then uses TURN or gets no media.
+- **Signaling server and keys.** The end to end keys are exchanged through the signaling server,
+  so a malicious server could replace them and read relayed data. Plain WebRTC has the same trust
+  model, because its DTLS fingerprints also pass through the signaling server.
+
 ## Documentation
 
 - [API](docs/api.md)
@@ -81,6 +95,9 @@ cd ../realtic-server-node && npm install && node server.js 8080
 - [M0 feasibility report](docs/m0-report.md)
 
 ## Development
+
+Development needs Node 20.19 or newer (within Node 22, 22.13 or newer), because of Playwright and
+ESLint. The library itself runs in the browser and does not use Node.
 
 ```sh
 npm test                  # unit tests (node:test, fake clock)
