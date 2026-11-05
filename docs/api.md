@@ -32,6 +32,11 @@ it and without `globalThis.RTCPeerConnection`, peers cannot connect.
 | `setSubscription(origin, { audio, video, tags })` | which media of `origin` this side wants; unwanted flows stop at their source |
 | `leave()` | sends `bye` over the mesh and the signaling server (beacon when supported) and closes; called on `pagehide` automatically |
 | `close()` | closes everything without `bye` |
+| `profile()` | `{ connectionType, effectiveType, saveData, metered, encode, decode, cpuLimited, encodeMsPerFrame, encodeShare, computeLimited }`; missing values are null; `encode` and `decode` map codecs to `{ supported, smooth, powerEfficient }`; `encodeMsPerFrame` is the encode time of one source frame, summed over the direct connections, and `encodeShare` is that time as a share of the frame time; `computeLimited` means `cpuLimited` or a share above `computeLimitShare` |
+| `probeEncoding({ contentType, width, height, bitrate, framerate })` | promise of `{ supported, smooth, powerEfficient }` for a format, or null without an estimate |
+| `setMetered(boolean)` | tells the group that the app treats this connection as metered; realtic has no rule of its own for it |
+| `reportLoad(value)` | adds the app's load to the relay load figure; above `maxRelayLoad` this peer takes no new relay flows and routes move around it; 0 removes it |
+| `relaysMedia` | true when this peer forwards media of others now, see `relayMedia` in the configuration |
 | `capabilities()` | `{ setSinkId, getDisplayMedia, encodedTransform, encodedStreams, trackGenerator, networkInformation }` |
 | `getStats()` | direct connections, routes, relay flows, relay load, bitrate budgets |
 | `diagnosticReport()` | promise of a JSON-serializable report: log, versions, config, states, pair dumps, getStats snapshot |
@@ -39,7 +44,8 @@ it and without `globalThis.RTCPeerConnection`, peers cannot connect.
 | `ready` | promise, resolves when keys and capabilities are collected |
 
 Events: `connection` (RalPeerConnection), `peerleft` (RalPeerConnection, reason), `presence`
-({ type, peer }).
+({ type, peer }), `profilechange` (the result of `profile()`; encode time counts in whole
+milliseconds).
 
 ## RalPeerConnection
 
@@ -96,6 +102,13 @@ event is a generated track that never changes; frames of the current source are 
 ## RalPublication
 
 `id`, `track`, `kind`, `tag`, `replaceTrack(track)` (no renegotiation), `close()`.
+
+`setLimits({ maxBitrate, maxFramerate, scaleResolutionDownBy })` sets limits that last until the
+next call. They combine with the bandwidth budgets: the lower bitrate and the larger downscale
+apply. A relay applies `maxBitrate` of the origin too. `null` removes the limits.
+
+`setTargets("all" | peerIds)` changes who receives the publication. Receivers that stay keep their
+track and `MediaStream`. A receiver that goes gets `trackended`.
 
 ## RalLog
 
@@ -156,6 +169,8 @@ All values in `DEFAULTS` (`src/config.js`) can be overridden per group. The most
 | `earlySwitchIntervalMs` | 10000 | at most one early switch to the standby per pair in this time |
 | `relay` | true | relay for other members |
 | `mediaRelay` | "allow" | "never" keeps this peer's media from being re-encoded by a relay |
+| `relayMedia` | "auto" | whether this peer forwards media of others. `false` still relays data, and this peer's own media stays relayable by others. `"auto"` forwards unless metered or compute limited. The value travels in `hello` and `direct-table`, and routes prefer relays that forward media. A pair whose only relay does not forward media keeps its data on that relay, without media. |
+| `computeLimitShare` | 0.5 | encode time as a share of the frame time above which a peer counts as compute limited |
 | `allowRelay` | null | `(origin, target) => boolean` |
 | `turnMode` | "fallback" | "always", "relay-only" |
 | `logCapacity`, `logLevel`, `logConsole`, `logRedact` | 1024, "info", false, false | logging |

@@ -30,6 +30,22 @@ export function relayBudget(destinationBudgets: number[]): number;
  */
 export function scaleFor(bps: number, steps: [number, number][]): number;
 /**
+ * Encoding parameters from a bandwidth budget and the limits of a publication: the lower bitrate,
+ * the larger downscale. Undefined when neither sets anything.
+ * @param {number|undefined} budgetBps
+ * @param {{maxBitrate?: number, maxFramerate?: number, scaleResolutionDownBy?: number}|null|undefined} limits
+ * @param {[number, number][]} steps
+ */
+export function encodingParams(budgetBps: number | undefined, limits: {
+    maxBitrate?: number;
+    maxFramerate?: number;
+    scaleResolutionDownBy?: number;
+} | null | undefined, steps: [number, number][]): {
+    maxBitrate: number;
+    scaleResolutionDownBy: number;
+    maxFramerate: number;
+};
+/**
  * Decides when a budget report goes out: at most every `intervalMs`, at once when a budget
  * dropped by more than `dropFraction` since the last report.
  */

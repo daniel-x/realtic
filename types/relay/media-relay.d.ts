@@ -38,12 +38,26 @@ export class MediaRelay {
      * Sources `directConn` must carry: `[{key, info, track, active, params}]`.
      * @param {import("../direct/direct-peer-connection.js").RalDirectPeerConnection} directConn
      */
-    plan(directConn: import("../direct/direct-peer-connection.js").RalDirectPeerConnection): {
+    plan(directConn: import("../direct/direct-peer-connection.js").RalDirectPeerConnection): ({
+        key: string;
+        info: {
+            origin: any;
+            pub: any;
+            tag: any;
+            kind: any;
+        };
+        track: any;
+        active: boolean;
+        limits: any;
+    } | {
         key: string;
         info: any;
         track: any;
         active: boolean;
-    }[];
+        limits: {
+            maxBitrate: any;
+        };
+    })[];
     /** Media kinds the pair with `peerId` exchanges. */
     kindsFor(peerId: any): any[];
     /** True when the pair with `peerId` exchanges media (our publications or theirs). */

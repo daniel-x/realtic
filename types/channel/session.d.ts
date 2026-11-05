@@ -81,6 +81,8 @@ export class Session extends Emitter {
         shareLogWithPeers: false;
         relay: true;
         mediaRelay: "allow";
+        relayMedia: "auto";
+        computeLimitShare: 0.5;
         allowRelay: any;
         turnMode: "fallback";
         stableTracks: false;

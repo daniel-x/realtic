@@ -54,6 +54,8 @@ export function makeConfig(overrides?: Partial<typeof DEFAULTS>): Readonly<{
     shareLogWithPeers: false;
     relay: true;
     mediaRelay: "allow";
+    relayMedia: "auto";
+    computeLimitShare: 0.5;
     allowRelay: any;
     turnMode: "fallback";
     stableTracks: false;
@@ -183,6 +185,14 @@ export const DEFAULTS: Readonly<{
     relay: true;
     /** `"allow"` or `"never"`: whether media of this peer may be re-encoded by a relay. */
     mediaRelay: "allow";
+    /**
+     * Whether this peer forwards media of others: `true`, `false`, or `"auto"`, which forwards unless
+     * the peer is metered or compute limited. `false` still relays data, and this peer's own media
+     * can still be relayed by others.
+     */
+    relayMedia: "auto";
+    /** Encode time as a share of the frame time above which this peer counts as compute limited. */
+    computeLimitShare: 0.5;
     /** Narrows relay authorization: `(originId, targetId) => boolean`. */
     allowRelay: any;
     /** `"fallback"`, `"always"` or `"relay-only"`, see section 11 of the plan. */

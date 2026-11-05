@@ -18,7 +18,7 @@ export function buildDirectTable(group, load) {
       mms: directConn.ralMaxMessageSize,
     });
   }
-  return { t: "direct-table", conns, load, relay: !!group.config.relay, mediaRelay: group.config.mediaRelay, ts: Math.round(group.clock.now()) };
+  return { t: "direct-table", conns, load, relay: !!group.config.relay, mediaRelay: group.config.mediaRelay, relayMedia: group.relaysMedia, ts: Math.round(group.clock.now()) };
 }
 
 /**
@@ -37,7 +37,7 @@ export class NeighborTables {
     for (const l of msg.conns ?? []) {
       if (typeof l?.peer === "string") table.set(l.peer, { state: l.state, rtt: l.rtt, bitrate: l.bitrate, loss: l.loss, candidateType: l.candidateType, mms: l.mms });
     }
-    this.#tables.set(neighbor, { table, load: Number(msg.load) || 0, relay: msg.relay !== false, mediaRelay: msg.mediaRelay === "never" ? "never" : "allow", at: now });
+    this.#tables.set(neighbor, { table, load: Number(msg.load) || 0, relay: msg.relay !== false, mediaRelay: msg.mediaRelay === "never" ? "never" : "allow", relayMedia: msg.relayMedia !== false, at: now });
   }
 
   /** @param {string} neighbor */

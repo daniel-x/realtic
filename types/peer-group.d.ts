@@ -3,7 +3,8 @@
  * `removePeer`, or enables `autoPeers` to follow the adapter's presence events.
  *
  * Events: `connection` (RalPeerConnection) when a connection is created, `peerleft`
- * (RalPeerConnection, reason), `presence` ({type, peer}).
+ * (RalPeerConnection, reason), `presence` ({type, peer}), `profilechange` (the result of
+ * `profile()`).
  */
 export class RalPeerGroup extends Emitter {
     /**
@@ -91,6 +92,8 @@ export class RalPeerGroup extends Emitter {
         shareLogWithPeers: false;
         relay: true;
         mediaRelay: "allow";
+        relayMedia: "auto";
+        computeLimitShare: 0.5;
         allowRelay: any;
         turnMode: "fallback";
         stableTracks: false;
@@ -179,6 +182,55 @@ export class RalPeerGroup extends Emitter {
      * @param {import("./media/subscriptions.js").Subscription} sub
      */
     setSubscription(origin: string, sub: import("./media/subscriptions.js").Subscription): void;
+    /**
+     * What this device reports about its network and compute. Missing values are null.
+     * `encodeMsPerFrame` is the encode time of one source frame, summed over the direct connections
+     * that encode it, and `encodeShare` is that time as a share of the frame time. `computeLimited`
+     * says that the browser reports a CPU limit, or that the share is above
+     * `config.computeLimitShare`. Test hook `profile` overrides values.
+     * @returns {{connectionType: string|null, effectiveType: string|null, saveData: boolean, metered: boolean, encode: object, decode: object, cpuLimited: boolean, encodeMsPerFrame: number|null, encodeShare: number|null, computeLimited: boolean}}
+     */
+    profile(): {
+        connectionType: string | null;
+        effectiveType: string | null;
+        saveData: boolean;
+        metered: boolean;
+        encode: object;
+        decode: object;
+        cpuLimited: boolean;
+        encodeMsPerFrame: number | null;
+        encodeShare: number | null;
+        computeLimited: boolean;
+    };
+    /**
+     * Estimates encoding of a video format. Null when the browser gives no estimate.
+     * @param {{contentType?: string, width: number, height: number, bitrate: number, framerate: number}} format
+     */
+    probeEncoding(format: {
+        contentType?: string;
+        width: number;
+        height: number;
+        bitrate: number;
+        framerate: number;
+    }): Promise<{
+        supported: boolean;
+        smooth: boolean;
+        powerEfficient: boolean;
+    }>;
+    /** Tells the group that the app treats this device's connection as metered, or not. */
+    setMetered(metered: any): void;
+    /**
+     * Reports load of the app, added to the relay load figure. Above `config.maxRelayLoad` this peer
+     * takes no new relay flows, and others route around it.
+     * @param {number} value 0 means no load
+     */
+    reportLoad(value: number): void;
+    /** True when the profile says that this device is short of compute. */
+    get computeLimited(): boolean;
+    /** True when this peer forwards media of others now, see `config.relayMedia`. */
+    get relaysMedia(): boolean;
+    /** @internal emits `profilechange` when the profile changed, and moves routes when needed */
+    checkProfile(): void;
     /**
      * Runs a liveness check on all direct connections at once; restarts ICE on slow or stale ones.
      */

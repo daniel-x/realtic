@@ -1,5 +1,5 @@
 import { wants } from "../media/subscriptions.js";
-import { directBudgets, relayBudget, scaleFor, BudgetReporter } from "../media/bwe.js";
+import { directBudgets, relayBudget, encodingParams, BudgetReporter } from "../media/bwe.js";
 import { connects } from "./data-relay.js";
 
 const BUDGET_CHANGE = 0.1;
@@ -127,16 +127,18 @@ export class MediaRelay {
         if (target === neighbor || !pub.targets(target)) continue;
         const route = g.connections.get(target)?.routeInfo;
         for (const f of p.flows.values()) {
-          if (f.via !== neighbor || f.state !== "open") continue;
+          if (f.via !== neighbor || f.state !== "open" || this.#routing.neighbors.get(neighbor)?.relayMedia === false) continue;
           carried = true;
           const inUse = route?.kind === "relay" && route.flow === f.flow;
           if (inUse && wants(this.subscription(target, g.selfId), pub.kind, pub.tag)) active = true;
         }
       }
       if (!carried) continue;
-      out.push({ key: `self:${pub.id}`, info: { origin: g.selfId, pub: pub.id, tag: pub.tag, kind: pub.kind }, track: pub.track, active });
+      const info = { origin: g.selfId, pub: pub.id, tag: pub.tag, kind: pub.kind };
+      if (pub.limits?.maxBitrate !== undefined) info.maxBitrate = pub.limits.maxBitrate;
+      out.push({ key: `self:${pub.id}`, info, track: pub.track, active, limits: pub.limits });
     }
-    for (const [key, src] of this.#forwardable) {
+    for (const [key, src] of g.relaysMedia ? this.#forwardable : []) {
       const origin = src.info.origin;
       if (origin === neighbor || src.via === neighbor) continue;
       let carried = false;
@@ -147,7 +149,7 @@ export class MediaRelay {
         if (f.role === "active" && wants(this.subscription(neighbor, origin), src.info.kind, src.info.tag)) active = true;
       }
       if (!carried) continue;
-      out.push({ key: `fwd:${key}`, info: { ...src.info }, track: src.track, active });
+      out.push({ key: `fwd:${key}`, info: { ...src.info }, track: src.track, active, limits: src.info.maxBitrate === undefined ? null : { maxBitrate: src.info.maxBitrate } });
     }
     for (const p of out) p.params = this.#params(directConn, p);
     return out;
@@ -156,15 +158,15 @@ export class MediaRelay {
   /**
    * Encoding parameters. On a direct path the browser's own congestion control adapts the
    * bitrate, so only relayed flows get explicit caps: a relay encodes every output at the minimum
-   * budget of its destinations, and the origin applies the budget the relay reported (D3).
+   * budget of its destinations, and the origin applies the budget the relay reported (D3). The
+   * limits of the publication apply on top, on every path, and a relay applies the origin's
+   * bitrate limit.
    */
   #params(directConn, p) {
-    if (p.info.kind !== "video") return undefined;
-    const bps = p.key.startsWith("fwd:")
+    const bps = p.info.kind !== "video" ? undefined : p.key.startsWith("fwd:")
       ? this.#relayBudgets.get(p.info.origin)?.get(p.info.pub)
       : this.#reported.get(directConn.ralRemoteId)?.get(p.info.pub);
-    if (bps === undefined) return undefined;
-    return { maxBitrate: bps, scaleResolutionDownBy: scaleFor(bps, this.#group.config.bweResolutionSteps) };
+    return encodingParams(bps, p.limits, this.#group.config.bweResolutionSteps);
   }
 
   /** Media kinds the pair with `peerId` exchanges. */

@@ -11,7 +11,7 @@ import { RalPeerConnection } from "./peer-connection.js";
 import { decode } from "./transport/framing.js";
 import { generateKeyPair, exportPublic, derivePairKey } from "./crypto/e2e.js";
 import { MediaManager } from "./media/media.js";
-import { collect as collectCaps, features } from "./media/capabilities.js";
+import { collect as collectCaps, features, probeEncoding } from "./media/capabilities.js";
 import { wants, normalize } from "./media/subscriptions.js";
 import { Routing } from "./routing/route.js";
 import { SleepWatcher } from "./liveness/sleep.js";
@@ -26,7 +26,8 @@ const MESH_ONLY_REJECT = new Set(["hello", "offer", "answer"]);
  * `removePeer`, or enables `autoPeers` to follow the adapter's presence events.
  *
  * Events: `connection` (RalPeerConnection) when a connection is created, `peerleft`
- * (RalPeerConnection, reason), `presence` ({type, peer}).
+ * (RalPeerConnection, reason), `presence` ({type, peer}), `profilechange` (the result of
+ * `profile()`).
  */
 export class RalPeerGroup extends Emitter {
   /**
@@ -55,6 +56,9 @@ export class RalPeerGroup extends Emitter {
   #subscriptions = new Map();
   #cleanup = [];
   #tickTimer = null;
+  #metered = false;
+  #lastProfile = null;
+  #lastRelaysMedia = null;
 
   /**
    * @param {object} options
@@ -212,6 +216,7 @@ export class RalPeerGroup extends Emitter {
       caps: this.#caps,
       relay: this.config.relay,
       mediaRelay: this.config.mediaRelay,
+      relayMedia: this.relaysMedia,
     };
   }
 
@@ -495,6 +500,95 @@ export class RalPeerGroup extends Emitter {
     this.routing.subscriptionChanged(origin);
   }
 
+  // Network and compute -------------------------------------------------------------------------
+
+  /**
+   * What this device reports about its network and compute. Missing values are null.
+   * `encodeMsPerFrame` is the encode time of one source frame, summed over the direct connections
+   * that encode it, and `encodeShare` is that time as a share of the frame time. `computeLimited`
+   * says that the browser reports a CPU limit, or that the share is above
+   * `config.computeLimitShare`. Test hook `profile` overrides values.
+   * @returns {{connectionType: string|null, effectiveType: string|null, saveData: boolean, metered: boolean, encode: object, decode: object, cpuLimited: boolean, encodeMsPerFrame: number|null, encodeShare: number|null, computeLimited: boolean}}
+   */
+  profile() {
+    const c = globalThis.navigator?.connection;
+    let cpuLimited = false;
+    let encodeMs = null;
+    let encodeShare = null;
+    for (const directConn of this.directConns.values()) {
+      const m = directConn.ralMetrics;
+      if (m.cpuLimited) cpuLimited = true;
+      if (typeof m.encodeMsPerFrame === "number") encodeMs = (encodeMs ?? 0) + m.encodeMsPerFrame;
+      if (typeof m.encodeShare === "number") encodeShare = (encodeShare ?? 0) + m.encodeShare;
+    }
+    const measured = {
+      connectionType: c?.type ?? null,
+      effectiveType: c?.effectiveType ?? null,
+      saveData: !!c?.saveData,
+      metered: this.#metered,
+      encode: this.#caps?.encode ?? {},
+      decode: this.#caps?.decode ?? {},
+      cpuLimited,
+      encodeMsPerFrame: encodeMs,
+      encodeShare,
+      ...(typeof this.hooks.profile === "function" ? this.hooks.profile() : this.hooks.profile),
+    };
+    return { ...measured, computeLimited: measured.computeLimited ?? (measured.cpuLimited || (measured.encodeShare ?? 0) > this.config.computeLimitShare) };
+  }
+
+  /**
+   * Estimates encoding of a video format. Null when the browser gives no estimate.
+   * @param {{contentType?: string, width: number, height: number, bitrate: number, framerate: number}} format
+   */
+  probeEncoding(format) {
+    return probeEncoding(format);
+  }
+
+  /** Tells the group that the app treats this device's connection as metered, or not. */
+  setMetered(metered) {
+    this.#metered = !!metered;
+    this.checkProfile();
+  }
+
+  /**
+   * Reports load of the app, added to the relay load figure. Above `config.maxRelayLoad` this peer
+   * takes no new relay flows, and others route around it.
+   * @param {number} value 0 means no load
+   */
+  reportLoad(value) {
+    this.routing.setAppLoad(Math.max(0, Number(value) || 0));
+  }
+
+  /** True when the profile says that this device is short of compute. */
+  get computeLimited() {
+    return this.profile().computeLimited;
+  }
+
+  /** True when this peer forwards media of others now, see `config.relayMedia`. */
+  get relaysMedia() {
+    const setting = this.config.relayMedia;
+    if (setting !== "auto") return !!setting;
+    const { metered, computeLimited } = this.profile();
+    return !metered && !computeLimited;
+  }
+
+  /** @internal emits `profilechange` when the profile changed, and moves routes when needed */
+  checkProfile() {
+    const profile = this.profile();
+    const key = JSON.stringify({ ...profile, encodeMsPerFrame: profile.encodeMsPerFrame === null ? null : Math.round(profile.encodeMsPerFrame), encodeShare: profile.encodeShare === null ? null : Math.round(profile.encodeShare * 10) });
+    if (key !== this.#lastProfile) {
+      const first = this.#lastProfile === null;
+      this.#lastProfile = key;
+      if (!first) this.emit("profilechange", profile);
+    }
+    const relays = this.relaysMedia;
+    if (this.#lastRelaysMedia !== null && relays !== this.#lastRelaysMedia) {
+      this.log.write("info", "group", "relaying of media changed", { relays });
+      this.routing.relayMediaChanged();
+    }
+    this.#lastRelaysMedia = relays;
+  }
+
   // Lifecycle -----------------------------------------------------------------------------------
 
   #installLifecycle() {
@@ -509,7 +603,10 @@ export class RalPeerGroup extends Emitter {
     }
     on(g, "pagehide", () => this.leave());
     on(g, "online", () => this.checkDirectConns("online"));
-    on(g.navigator?.connection, "change", () => this.network.onConnectionChange());
+    on(g.navigator?.connection, "change", () => {
+      this.network.onConnectionChange();
+      this.checkProfile();
+    });
     this.network.start();
     const sleep = new SleepWatcher({
       clock: this.clock,

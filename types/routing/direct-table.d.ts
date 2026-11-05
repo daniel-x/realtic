@@ -17,6 +17,7 @@ export function buildDirectTable(group: any, load: any): {
     load: any;
     relay: boolean;
     mediaRelay: any;
+    relayMedia: any;
     ts: number;
 };
 /**

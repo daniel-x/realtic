@@ -36,6 +36,7 @@ export class Routing {
   #lastDirectTable = 0;
   #beatTimer = null;
   #load = 0;
+  #appLoad = 0;
   #lastStateFrom = new Map();
 
   /** @param {object} group */
@@ -118,6 +119,7 @@ export class Routing {
   }
 
   onMetrics(directConn, m, stats) {
+    this.#group.checkProfile();
     this.#computeLoad();
     this.mediaRelay.onMetrics(directConn, m, stats);
   }
@@ -141,7 +143,20 @@ export class Routing {
       if (directConn.ralMetrics.cpuLimited) cpu = true;
     }
     const relayed = this.relay.rate * 8 + this.mediaRelay.relayedBps();
-    this.#load = relayLoad(relayed, uplink, cpu);
+    this.#load = relayLoad(relayed, uplink, cpu || this.#group.computeLimited, this.#appLoad);
+  }
+
+  /** The app reported its own load, see `group.reportLoad`. */
+  setAppLoad(value) {
+    this.#appLoad = value;
+    this.#computeLoad();
+  }
+
+  /** This peer's willingness to forward media changed: tells the neighbors and plans again. */
+  relayMediaChanged() {
+    this.#broadcastDirectTable();
+    this.#group.mediaChanged();
+    this.#updateAll("relay media changed");
   }
 
   #broadcastDirectTable() {
@@ -161,11 +176,14 @@ export class Routing {
   onCtl(directConn, msg) {
     const g = this.#group;
     switch (msg.t) {
-      case "direct-table":
+      case "direct-table": {
+        const relayedMedia = this.neighbors.get(directConn.ralRemoteId)?.relayMedia;
         this.neighbors.update(directConn.ralRemoteId, msg, g.clock.now());
+        if (relayedMedia !== undefined && relayedMedia !== this.neighbors.get(directConn.ralRemoteId).relayMedia) g.mediaChanged();
         if (typeof msg.ts === "number") this.#lastStateFrom.set(directConn.ralRemoteId, { ts: msg.ts, at: g.clock.now() });
         if (msg.echo && typeof msg.echo.ts === "number") directConn.ralNoteControlRtt(g.clock.now() - msg.echo.ts - (msg.echo.held || 0));
         return;
+      }
       case "relay-request":
         this.relay.onRequest(directConn, msg);
         return;
@@ -481,6 +499,7 @@ export class Routing {
         load: t.load,
         relay: t.relay,
         mediaRelay: t.mediaRelay,
+        relayMedia: t.relayMedia,
         major: g.connections.get(via)?.remote?.proto?.major ?? this.#group.protocol.major,
         caps: g.connections.get(via)?.remote?.caps,
       });

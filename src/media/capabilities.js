@@ -14,6 +14,27 @@ function codecs(cls, kind) {
   }
 }
 
+/**
+ * Estimates encoding of a video format with `mediaCapabilities.encodingInfo`. Firefox accepts the
+ * type "transmission" only, Chromium "webrtc". Null when the browser gives no estimate.
+ * @param {{contentType?: string, width: number, height: number, bitrate: number, framerate: number}} format
+ * @returns {Promise<{supported: boolean, smooth: boolean, powerEfficient: boolean}|null>}
+ */
+export async function probeEncoding({ contentType = "video/VP8", width, height, bitrate, framerate }) {
+  const mc = globalThis.navigator?.mediaCapabilities;
+  if (!mc?.encodingInfo) return null;
+  const video = { contentType, width, height, bitrate, framerate };
+  for (const type of ["webrtc", "transmission"]) {
+    try {
+      const r = await mc.encodingInfo({ type, video });
+      return { supported: r.supported, smooth: r.smooth, powerEfficient: r.powerEfficient };
+    } catch {
+      // the browser rejects this type, the next one may work
+    }
+  }
+  return null;
+}
+
 /** Feature flags of this browser. */
 export function features() {
   const g = globalThis;
@@ -37,6 +58,7 @@ export async function collect(timeoutMs = 1000) {
     send: { audio: codecs(g.RTCRtpSender, "audio"), video: codecs(g.RTCRtpSender, "video") },
     recv: { audio: codecs(g.RTCRtpReceiver, "audio"), video: codecs(g.RTCRtpReceiver, "video") },
     decode: {},
+    encode: {},
     features: features(),
   };
   const mc = g.navigator?.mediaCapabilities;
@@ -49,7 +71,11 @@ export async function collect(timeoutMs = 1000) {
         // probe not supported for this type
       }
     });
-    await Promise.race([Promise.all(probes), new Promise((r) => setTimeout(r, timeoutMs))]);
+    const encodeProbes = DECODE_PROBES.map(async (contentType) => {
+      const r = await probeEncoding({ contentType, width: 1280, height: 720, bitrate: 1500000, framerate: 30 });
+      if (r) out.encode[contentType] = r;
+    });
+    await Promise.race([Promise.all([...probes, ...encodeProbes]), new Promise((r) => setTimeout(r, timeoutMs))]);
   }
   return out;
 }

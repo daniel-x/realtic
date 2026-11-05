@@ -32,6 +32,10 @@ export class Routing {
     onDirectState(peerId: any, state: any, reason: any): void;
     onMetrics(directConn: any, m: any, stats: any): void;
     tick(): void;
+    /** The app reported its own load, see `group.reportLoad`. */
+    setAppLoad(value: any): void;
+    /** This peer's willingness to forward media changed: tells the neighbors and plans again. */
+    relayMediaChanged(): void;
     onCtl(directConn: any, msg: any): void;
     onPeerControl(peer: any, msg: any): void;
     /** Our own subscription for `origin` changed: tell the origin and the pair's relays. */

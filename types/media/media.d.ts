@@ -13,6 +13,12 @@ export class RalPublication {
     tag: any;
     to: string | Set<string>;
     closed: boolean;
+    /** @type {{maxBitrate?: number, maxFramerate?: number, scaleResolutionDownBy?: number}|null} */
+    limits: {
+        maxBitrate?: number;
+        maxFramerate?: number;
+        scaleResolutionDownBy?: number;
+    } | null;
     /** True when the publication targets `peerId`. */
     targets(peerId: any): any;
     /**
@@ -20,6 +26,23 @@ export class RalPublication {
      * @param {MediaStreamTrack} track
      */
     replaceTrack(track: MediaStreamTrack): Promise<void>;
+    /**
+     * Sets encoding limits that last until the next call, combined with the bandwidth budgets: the
+     * lower bitrate and the larger downscale apply. Relays apply `maxBitrate` too. An empty object or
+     * null removes the limits.
+     * @param {{maxBitrate?: number, maxFramerate?: number, scaleResolutionDownBy?: number}|null} limits
+     */
+    setLimits(limits: {
+        maxBitrate?: number;
+        maxFramerate?: number;
+        scaleResolutionDownBy?: number;
+    } | null): void;
+    /**
+     * Changes who receives this publication, without renegotiating for receivers that stay: their
+     * track and `MediaStream` stay as they are.
+     * @param {"all" | string[]} to
+     */
+    setTargets(to: "all" | string[]): void;
     /** Stops publishing. */
     close(): void;
     #private;
@@ -50,6 +73,8 @@ export class MediaManager {
     }): RalPublication;
     /** @param {RalPublication} pub */
     unpublish(pub: RalPublication): void;
+    /** @param {RalPublication} pub limits or targets of a publication changed */
+    publicationChanged(pub: RalPublication): void;
     /** Replaces the track of a source on every direct connection that carries it. */
     replaceSource(key: any, track: any): Promise<void>;
     /**

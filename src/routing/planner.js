@@ -24,6 +24,7 @@ export const CLASS = Object.freeze({ DIRECT: 0, PEER_RELAY: 1, TURN: 2 });
  * @property {number} load relay load figure
  * @property {boolean} relay whether it relays
  * @property {"allow"|"never"} mediaRelay
+ * @property {boolean} [relayMedia] false when the neighbor forwards data but no media
  * @property {number} [major] protocol major version
  * @property {object} [caps] codec capabilities from hello
  */
@@ -35,12 +36,14 @@ export const CLASS = Object.freeze({ DIRECT: 0, PEER_RELAY: 1, TURN: 2 });
  * @property {string} [via]
  * @property {number} cls
  * @property {number} cost
+ * @property {boolean} [dataOnly] true when the relay carries the data of a pair with media, but not its media
  */
 
 const LOSS_PENALTY_MS = 500;
 const BITRATE_PENALTY_MS = 200;
 const LOAD_PENALTY_MS = 150;
 const SLOW_PENALTY_MS = 400;
+const DATA_ONLY_PENALTY_MS = 1000;
 const DEFAULT_RTT = 100;
 
 /** True when a direct connection can carry a new route. */
@@ -96,7 +99,8 @@ export function candidates({ target, direct, neighbors, needBps = 0, media = fal
     const hop2 = n.table.get(target);
     if (!usable(hop2) || hop2.candidateType === "relay") continue;
     if (n.load > maxRelayLoad) continue;
-    if (media) {
+    const dataOnly = media && n.relayMedia === false;
+    if (media && !dataOnly) {
       if (n.mediaRelay === "never" || mediaPolicy?.(self) === "never" || mediaPolicy?.(target) === "never") continue;
       const ok = ["video", "audio"].every(
         (k) => codecPathOk(caps[self], n.caps, caps[target], k) && codecPathOk(caps[target], n.caps, caps[self], k),
@@ -107,8 +111,9 @@ export function candidates({ target, direct, neighbors, needBps = 0, media = fal
     const cost =
       hopCost({ ...n.toNeighbor, bitrate: bottleneck }, needBps) +
       hopCost({ ...hop2, bitrate: bottleneck }, 0) +
-      n.load * LOAD_PENALTY_MS;
-    out.push({ kind: "relay", via, cls: CLASS.PEER_RELAY, cost });
+      n.load * LOAD_PENALTY_MS +
+      (dataOnly ? DATA_ONLY_PENALTY_MS : 0);
+    out.push({ kind: "relay", via, cls: CLASS.PEER_RELAY, cost, ...(dataOnly ? { dataOnly } : {}) });
   }
   return out.sort((a, b) => a.cls - b.cls || a.cost - b.cost || (a.via ?? "").localeCompare(b.via ?? ""));
 }
@@ -196,8 +201,9 @@ export function chooseStandby(list, active) {
  * @param {number} relayedBps
  * @param {number} uplinkBps
  * @param {boolean} cpuLimited
+ * @param {number} [appLoad] load the app reported with `group.reportLoad`
  */
-export function relayLoad(relayedBps, uplinkBps, cpuLimited) {
+export function relayLoad(relayedBps, uplinkBps, cpuLimited, appLoad = 0) {
   const base = uplinkBps > 0 ? relayedBps / uplinkBps : relayedBps > 0 ? 1 : 0;
-  return Math.round((base + (cpuLimited ? 0.3 : 0)) * 1000) / 1000;
+  return Math.round((base + (cpuLimited ? 0.3 : 0) + appLoad) * 1000) / 1000;
 }

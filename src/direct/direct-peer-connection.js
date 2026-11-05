@@ -67,6 +67,7 @@ function defineClass(Base) {
     #statsTimer = null;
     #connectTimer = null;
     #polling = false;
+    #encodeTotals = new Map();
     #lastVerdictAt = -Infinity;
     #remoteVerdict = "ok";
     #lastCounters = new Map();
@@ -356,8 +357,7 @@ function defineClass(Base) {
 
     #onStable() {
       if (this.#closed) return;
-      for (const w of this.#stableWaiters) w(true);
-      this.#stableWaiters.clear();
+      for (const w of [...this.#stableWaiters]) w(true);
       this.#hooks.negotiated();
     }
 
@@ -498,13 +498,27 @@ function defineClass(Base) {
         let lossSum = 0;
         let lossN = 0;
         let cpu = false;
+        let encodeMs = 0;
+        let encodeFrames = 0;
+        let encodeShare;
+        const encodeTotals = new Map();
         for (const s of stats.values()) {
           if (s.type === "remote-inbound-rtp" && typeof s.fractionLost === "number") {
             lossSum += s.fractionLost;
             lossN++;
           }
           if (s.type === "outbound-rtp" && s.qualityLimitationReason === "cpu") cpu = true;
+          if (s.type === "outbound-rtp" && s.kind === "video" && typeof s.totalEncodeTime === "number" && typeof s.framesEncoded === "number") {
+            const last = this.#encodeTotals.get(s.id);
+            encodeTotals.set(s.id, { time: s.totalEncodeTime, frames: s.framesEncoded, at: s.timestamp });
+            if (last && s.framesEncoded > last.frames) {
+              encodeMs += (s.totalEncodeTime - last.time) * 1000;
+              encodeFrames += s.framesEncoded - last.frames;
+              if (s.timestamp > last.at) encodeShare = (encodeShare ?? 0) + ((s.totalEncodeTime - last.time) * 1000) / (s.timestamp - last.at);
+            }
+          }
         }
+        this.#encodeTotals = encodeTotals;
         this.#metrics = {
           rtt: this.#ctlRtt ?? (pair?.currentRoundTripTime != null ? pair.currentRoundTripTime * 1000 : this.#metrics.rtt),
           bitrate: pair?.availableOutgoingBitrate ?? undefined,
@@ -512,6 +526,8 @@ function defineClass(Base) {
           candidateType: local?.candidateType,
           remoteCandidateType: remote?.candidateType,
           cpuLimited: cpu,
+          encodeMsPerFrame: encodeFrames ? encodeMs / encodeFrames : undefined,
+          encodeShare,
           maxMessageSize: this.#hop.maxMessageSize,
         };
         this.#hooks.metrics(this.ralMetrics, stats);

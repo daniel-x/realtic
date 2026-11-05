@@ -17,6 +17,8 @@ export class RalPublication {
     this.tag = tag;
     this.to = to === "all" ? "all" : new Set(to);
     this.closed = false;
+    /** @type {{maxBitrate?: number, maxFramerate?: number, scaleResolutionDownBy?: number}|null} */
+    this.limits = null;
   }
 
   /** True when the publication targets `peerId`. */
@@ -32,6 +34,29 @@ export class RalPublication {
     if (track && track.kind !== this.kind) throw new TypeError(`expected a ${this.kind} track`);
     this.track = track;
     await this.#media.replaceSource(`self:${this.id}`, track);
+  }
+
+  /**
+   * Sets encoding limits that last until the next call, combined with the bandwidth budgets: the
+   * lower bitrate and the larger downscale apply. Relays apply `maxBitrate` too. An empty object or
+   * null removes the limits.
+   * @param {{maxBitrate?: number, maxFramerate?: number, scaleResolutionDownBy?: number}|null} limits
+   */
+  setLimits(limits) {
+    const { maxBitrate, maxFramerate, scaleResolutionDownBy } = limits ?? {};
+    const set = Object.entries({ maxBitrate, maxFramerate, scaleResolutionDownBy }).filter(([, v]) => v !== undefined);
+    this.limits = set.length ? Object.fromEntries(set) : null;
+    this.#media.publicationChanged(this);
+  }
+
+  /**
+   * Changes who receives this publication, without renegotiating for receivers that stay: their
+   * track and `MediaStream` stay as they are.
+   * @param {"all" | string[]} to
+   */
+  setTargets(to) {
+    this.to = to === "all" ? "all" : new Set(to);
+    this.#media.publicationChanged(this);
   }
 
   /** Stops publishing. */
@@ -92,6 +117,13 @@ export class MediaManager {
     this.pubs.delete(pub.id);
     this.l.info("unpublish", { pub: pub.id });
     this.#group.mediaChanged();
+  }
+
+  /** @param {RalPublication} pub limits or targets of a publication changed */
+  publicationChanged(pub) {
+    this.l.info("publication changed", { pub: pub.id, limits: pub.limits, to: pub.to === "all" ? "all" : [...pub.to] });
+    this.#group.mediaChanged();
+    this.#group.routing.mediaRelay.tick();
   }
 
   /** Replaces the track of a source on every direct connection that carries it. */
@@ -208,7 +240,13 @@ export class MediaManager {
     if (!attached) this.#attached.set(directConn.ralRemoteId, (attached = new Map()));
     for (const [mid, a] of [...attached]) {
       const now = mids.get(mid);
-      if (now && now.origin === a.info.origin && now.pub === a.info.pub) continue;
+      if (now && now.origin === a.info.origin && now.pub === a.info.pub) {
+        if (now.maxBitrate !== a.info.maxBitrate) {
+          a.info = now;
+          this.#group.routing.mediaRelay.receivedSource(directConn, now, a.track);
+        }
+        continue;
+      }
       attached.delete(mid);
       this.#detach(directConn, a.info);
     }
@@ -235,13 +273,17 @@ export class MediaManager {
   }
 }
 
+const MIN_ENCODING_BPS = 30000;
+
 async function setEncodings(sender, active, params) {
   const p = sender.getParameters();
   if (!p.encodings || !p.encodings.length) return;
   for (const e of p.encodings) {
     e.active = active;
-    if (params?.maxBitrate !== undefined) e.maxBitrate = Math.max(30000, Math.round(params.maxBitrate));
+    if (params?.maxBitrate !== undefined) e.maxBitrate = Math.max(MIN_ENCODING_BPS, Math.round(params.maxBitrate));
     else delete e.maxBitrate;
+    if (params?.maxFramerate !== undefined) e.maxFramerate = params.maxFramerate;
+    else delete e.maxFramerate;
     if (sender.track?.kind === "video" || params?.scaleResolutionDownBy !== undefined) e.scaleResolutionDownBy = params?.scaleResolutionDownBy ?? 1;
   }
   await sender.setParameters(p);

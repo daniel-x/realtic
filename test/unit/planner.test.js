@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { candidates, RouteSelector, chooseStandby, CLASS, routeKey, relayLoad, codecPathOk } from "../../src/routing/planner.js";
-import { directBudgets, relayBudget, scaleFor, BudgetReporter } from "../../src/media/bwe.js";
+import { directBudgets, relayBudget, scaleFor, encodingParams, BudgetReporter } from "../../src/media/bwe.js";
 import { RalFakeClock } from "../../src/util/clock.js";
 
 const ok = (rtt, extra = {}) => ({ state: "ok", rtt, candidateType: "host", ...extra });
@@ -87,4 +87,41 @@ test("budget reporter throttles but reports drops at once", () => {
   assert.ok(r.due(new Map([["v", 700]])));
   clock.advance(600);
   assert.ok(r.due(new Map([["v", 750]])));
+});
+
+test("a relay that forwards no media stays usable for data, behind relays that forward media", () => {
+  const neighbors = new Map([
+    ["C", neighbor(ok(5), { B: ok(5) }, { relayMedia: false })],
+    ["D", neighbor(ok(100), { B: ok(100) })],
+  ]);
+  const withMedia = candidates({ ...base, neighbors, media: true });
+  assert.deepEqual(withMedia.map(routeKey), ["relay:D", "relay:C"]);
+  assert.equal(withMedia[1].dataOnly, true);
+  assert.equal(withMedia[0].dataOnly, undefined);
+  const dataOnly = candidates({ ...base, neighbors });
+  assert.deepEqual(dataOnly.map(routeKey), ["relay:C", "relay:D"]);
+  assert.equal(dataOnly[0].dataOnly, undefined);
+});
+
+test("a relay that forwards no media ignores the media policy, because it carries data only", () => {
+  const neighbors = new Map([["C", neighbor(ok(5), { B: ok(5) }, { relayMedia: false })]]);
+  const list = candidates({ ...base, neighbors, media: true, mediaPolicy: () => "never" });
+  assert.deepEqual(list.map(routeKey), ["relay:C"]);
+});
+
+test("the load an app reports adds to the relay load figure", () => {
+  assert.equal(relayLoad(0, 1000000, false, 0.9), 0.9);
+  assert.equal(relayLoad(500000, 1000000, true, 0.1), 0.9);
+  assert.equal(relayLoad(0, 0, false), 0);
+});
+
+test("encoding parameters combine budget and limits", () => {
+  const steps = [[300000, 2], [120000, 4]];
+  assert.equal(encodingParams(undefined, null, steps), undefined);
+  assert.equal(encodingParams(undefined, {}, steps), undefined);
+  assert.deepEqual(encodingParams(1000000, null, steps), { maxBitrate: 1000000, scaleResolutionDownBy: 1 });
+  assert.deepEqual(encodingParams(1000000, { maxBitrate: 250000 }, steps), { maxBitrate: 250000, scaleResolutionDownBy: 1 });
+  assert.deepEqual(encodingParams(100000, { maxBitrate: 250000, scaleResolutionDownBy: 2 }, steps), { maxBitrate: 100000, scaleResolutionDownBy: 4 });
+  assert.deepEqual(encodingParams(undefined, { maxBitrate: 32000 }, steps), { maxBitrate: 32000 });
+  assert.deepEqual(encodingParams(undefined, { maxFramerate: 15, scaleResolutionDownBy: 2 }, steps), { scaleResolutionDownBy: 2, maxFramerate: 15 });
 });

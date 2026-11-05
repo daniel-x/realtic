@@ -45,8 +45,9 @@ export function chooseStandby(list: Candidate[], active: Candidate | null): Cand
  * @param {number} relayedBps
  * @param {number} uplinkBps
  * @param {boolean} cpuLimited
+ * @param {number} [appLoad] load the app reported with `group.reportLoad`
  */
-export function relayLoad(relayedBps: number, uplinkBps: number, cpuLimited: boolean): number;
+export function relayLoad(relayedBps: number, uplinkBps: number, cpuLimited: boolean, appLoad?: number): number;
 /**
  * Route planning (plan section 7.2, 7.3). Pure logic over direct connection metrics; the routing
  * layer feeds it the local direct connection table and the neighbors' tables.
@@ -137,6 +138,10 @@ export type NeighborInfo = {
     relay: boolean;
     mediaRelay: "allow" | "never";
     /**
+     * false when the neighbor forwards data but no media
+     */
+    relayMedia?: boolean;
+    /**
      * protocol major version
      */
     major?: number;
@@ -153,4 +158,8 @@ export type Candidate = {
     via?: string;
     cls: number;
     cost: number;
+    /**
+     * true when the relay carries the data of a pair with media, but not its media
+     */
+    dataOnly?: boolean;
 };

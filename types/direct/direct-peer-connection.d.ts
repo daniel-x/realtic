@@ -152,6 +152,8 @@ declare function defineClass(Base: typeof RTCPeerConnection): {
             shareLogWithPeers: false;
             relay: true;
             mediaRelay: "allow";
+            relayMedia: "auto";
+            computeLimitShare: 0.5;
             allowRelay: any;
             turnMode: "fallback";
             stableTracks: false;
@@ -179,6 +181,7 @@ declare function defineClass(Base: typeof RTCPeerConnection): {
         "__#private@#statsTimer": any;
         "__#private@#connectTimer": any;
         "__#private@#polling": boolean;
+        "__#private@#encodeTotals": Map<any, any>;
         "__#private@#lastVerdictAt": number;
         "__#private@#remoteVerdict": string;
         "__#private@#lastCounters": Map<any, any>;
